@@ -1,0 +1,162 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'org.cadixdev.licenser' version '0.6.1'
+    id 'com.github.johnrengelman.shadow' version '5.2.0'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+
+group 'net.covers1624'
+archivesBaseName = "JdkUtils"
+version '0.1'
+
+def signProps = [:]
+if (System.getenv("KEY_STORE")) {
+    println "Using Env variables for jar signing."
+    signProps['keyStore'] = System.getenv("KEY_STORE")
+    file(System.getenv("KEY_STORE_PROPS")).withReader {
+        def props = new Properties()
+        props.load(it)
+        signProps.putAll(props)
+    }
+} else if (project.hasProperty('keyStore')) {
+    println "Using Project properties for jar signing."
+    signProps['keyStore'] = project.getProperty('keyStore')
+    signProps['storePass'] = project.getProperty('keyStorePass')
+    signProps['alias'] = project.getProperty('keyStoreAlias')
+    signProps['keyPass'] = project.getProperty('keyStoreKeyPass')
+} else {
+    println 'No signing secrets found, build will not be signed.'
+}
+
+version = "$version." + (System.getenv("BUILD_NUMBER") ?: "1")
+println "Starting build of ${archivesBaseName}, Version: ${version}"
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    jcenter()
+    maven { url 'https://maven.covers1624.net/' }
+}
+
+configurations {
+    testLibs
+    testRuntimeOnly.extendsFrom testLibs
+}
+
+dependencies {
+    api 'org.slf4j:slf4j-api:1.7.32'
+    api 'net.covers1624:Quack:0.4.0.35'
+
+    api 'com.google.code.gson:gson:2.8.9'
+    api 'com.google.guava:guava:26.0-jre'
+
+    api 'org.apache.commons:commons-lang3:3.12.0'
+    api 'org.apache.commons:commons-compress:1.21'
+
+    compileOnly 'org.ow2.asm:asm:9.2'
+    api('net.rubygrapefruit:native-platform:0.21') {
+        transitive = false
+    }
+    api('net.rubygrapefruit:native-platform-windows-amd64:0.21') {
+        transitive = false
+    }
+    api('net.rubygrapefruit:native-platform-windows-i386:0.21') {
+        transitive = false
+    }
+
+    compileOnly 'org.jetbrains:annotations:22.0.0'
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+    testLibs 'com.squareup.okhttp3:okhttp:4.9.2'
+    testLibs 'org.slf4j:slf4j-simple:1.7.32'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    from file("LICENSE.txt")
+}
+
+task srcJar(type: Jar) {
+    classifier 'sources'
+    from sourceSets.main.allSource
+    from file("LICENSE.txt")
+}
+
+shadowJar {
+    classifier 'test'
+    configurations = [project.configurations.runtimeClasspath, project.configurations.testLibs]
+
+    from sourceSets.main.output
+    from sourceSets.test.output
+}
+
+license {
+    header = file("LICENSE-header.txt")
+    properties {
+        year = new Date().format("yyyy")
+    }
+    newLine false
+
+    include 'net/covers1624/jdkutils/**'
+}
+
+publishing {
+    repositories {
+        if (System.getenv('MAVEN_PASS')) {
+            maven {
+                url "https://nexus.covers1624.net/repository/maven-releases/"
+                credentials {
+                    username 'covers1624'
+                    password System.getenv('MAVEN_PASS')
+                }
+            }
+        }
+    }
+    publications {
+        DiffPatch(MavenPublication) {
+            groupId project.group
+            artifactId project.archivesBaseName
+            version project.version
+
+            from components['java']
+
+            pom {
+                name = archivesBaseName
+                description = archivesBaseName
+                //The publish plugin doesnt like GString's here apparently..
+                url = "https://github.com/covers1624/${archivesBaseName}".toString()
+                scm {
+                    url = "https://github.com/covers1624/${archivesBaseName}".toString()
+                    connection = "scm:git:git://github.com/covers1624/${archivesBaseName}.git".toString()
+                    connection = "scm:git:git@github.com:covers1624/${archivesBaseName}.git".toString()
+                }
+
+                issueManagement {
+                    system = 'github'
+                    url = "https://github.com/covers1624/${archivesBaseName}/issues".toString()
+                }
+                licenses {
+                    license {
+                        name = "MIT"
+                        url = "https://raw.githubusercontent.com/covers1624/${archivesBaseName}/master/LICENSE.txt".toString()
+                        distribution = 'repo'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'covers1624'
+                        name = 'covers1624'
+                    }
+                }
+            }
+        }
+    }
+}
