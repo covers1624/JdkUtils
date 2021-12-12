@@ -33,7 +33,7 @@ public class JavaPropExtractGenerator {
     /**
      * The list of properties extracted by this tool.
      * <p>
-     * NOTE: Whenever this array is modified, the '/assets/PropExtract.class' asset
+     * NOTE: Whenever this array is modified, the '/assets/PropExtract.class.bin' asset
      * will need to be updated.
      */
     public static String[] DEFAULTS = {
@@ -80,7 +80,7 @@ public class JavaPropExtractGenerator {
      * @throws IOException If an IO error occurs.
      */
     public static Path writeClass(Path folder, String[] properties) throws IOException {
-        Path classFile = folder.resolve("PropExtract.class");
+        Path classFile = folder.resolve("PropExtract.class.bin");
         Files.createDirectories(classFile.getParent());
         try (OutputStream os = Files.newOutputStream(classFile)) {
             os.write(properties == DEFAULTS ? DEFAULT_CLASS_BYTES : generateClass(properties));
