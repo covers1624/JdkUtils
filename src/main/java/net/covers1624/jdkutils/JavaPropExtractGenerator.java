@@ -52,7 +52,7 @@ public class JavaPropExtractGenerator {
      * A pre-generated class containing {@link #DEFAULTS} to be extracted.
      */
     private static final byte[] DEFAULT_CLASS_BYTES = SneakyUtils.sneaky(() -> {
-        InputStream is = JavaPropExtractGenerator.class.getResourceAsStream("/assets/PropExtract.class");
+        InputStream is = JavaPropExtractGenerator.class.getResourceAsStream("/assets/PropExtract.class.bin");
         if (is == null) throw new ExceptionInInitializerError("Unable to locate 'PropExtract.class' asset.");
         try (InputStream _is = is) {
             return IOUtils.toBytes(_is);
@@ -80,7 +80,7 @@ public class JavaPropExtractGenerator {
      * @throws IOException If an IO error occurs.
      */
     public static Path writeClass(Path folder, String[] properties) throws IOException {
-        Path classFile = folder.resolve("PropExtract.class.bin");
+        Path classFile = folder.resolve("PropExtract.class");
         Files.createDirectories(classFile.getParent());
         try (OutputStream os = Files.newOutputStream(classFile)) {
             os.write(properties == DEFAULTS ? DEFAULT_CLASS_BYTES : generateClass(properties));
