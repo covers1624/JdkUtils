@@ -17,6 +17,7 @@ import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.gson.HashCodeAdapter;
 import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.gson.PathTypeAdapter;
+import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.util.HashUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
@@ -99,15 +100,16 @@ public class JdkInstallationManager {
      * <p>
      * If one already exists. That will be returned instead.
      *
-     * @param version The java Major version to use.
+     * @param version  The java Major version to use.
+     * @param listener The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
      * @return The JDK home directory.
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
      */
-    public Path provisionJdk(JavaVersion version) throws IOException {
+    public Path provisionJdk(JavaVersion version, @Nullable DownloadListener listener) throws IOException {
         Path existing = findJdk(version);
         if (existing != null) return existing;
 
-        Pair<String, Path> pair = provisioner.provisionJdk(baseDir, version, ignoreMacosAArch64);
+        Pair<String, Path> pair = provisioner.provisionJdk(baseDir, listener, version, ignoreMacosAArch64);
 
         Path installation = pair.getRight();
         assert Files.exists(installation);
@@ -151,12 +153,12 @@ public class JdkInstallationManager {
          * Provision a JDK with the given Java major version.
          *
          * @param baseFolder The folder to place the JDK folder.
+         * @param listener   The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
          * @param version    The Java major version to install.
-         *                   // TODO fix this return javadoc
-         * @return The full semver version for the provisioned JDK.
+         * @return A {@link Pair} of the full semver version, and the Java Home directory provisioned into.
          * @throws IOException If there was an error provisioning the JDK.
          */
-        Pair<String, Path> provisionJdk(Path baseFolder, JavaVersion version, boolean ignoreMacosAArch64) throws IOException;
+        Pair<String, Path> provisionJdk(Path baseFolder, @Nullable DownloadListener listener, JavaVersion version, boolean ignoreMacosAArch64) throws IOException;
     }
 
     public static class Installation {

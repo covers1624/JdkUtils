@@ -16,6 +16,7 @@ import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.io.IOUtils;
 import net.covers1624.quack.net.DownloadAction;
 import net.covers1624.quack.net.HttpResponseException;
+import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
 import net.covers1624.quack.util.HashUtils;
@@ -24,6 +25,7 @@ import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +71,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
 
     @Override
     @SuppressWarnings ("UnstableApiUsage")
-    public Pair<String, Path> provisionJdk(Path baseFolder, JavaVersion version, boolean ignoreMacosAArch64) throws IOException {
+    public Pair<String, Path> provisionJdk(Path baseFolder, @Nullable DownloadListener listener, JavaVersion version, boolean ignoreMacosAArch64) throws IOException {
         LOGGER.info("Attempting to provision Adoptium JDK for {}.", version);
         List<AdoptiumRelease> releases = getReleases(version, ignoreMacosAArch64);
         if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + version);
@@ -86,6 +88,9 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         Path tempFile = baseFolder.resolve(pkg.name);
         tempFile.toFile().deleteOnExit();
         DownloadAction action = downloadActionSupplier.get();
+        if (listener != null) {
+            action.setDownloadListener(listener);
+        }
         action.setUrl(pkg.link);
         action.setDest(tempFile);
         action.execute();

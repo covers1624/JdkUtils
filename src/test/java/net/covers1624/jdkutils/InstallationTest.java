@@ -40,7 +40,7 @@ public class InstallationTest {
                 ignoreAArch64
         );
         assert javaVersion != null;
-        Path homeDir = jdkInstallationManager.provisionJdk(javaVersion);
+        Path homeDir = jdkInstallationManager.provisionJdk(javaVersion, null);
         LOGGER.info("Provisioned Java home installation: {}", homeDir);
 
         LOGGER.info("Testing installed JDK..");

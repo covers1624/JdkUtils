@@ -10,7 +10,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
 group 'net.covers1624'
 archivesBaseName = "JdkUtils"
-version '0.1'
+version '0.2.0'
 
 def signProps = [:]
 if (System.getenv("KEY_STORE")) {
