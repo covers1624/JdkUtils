@@ -43,7 +43,7 @@ repositories {
 
 configurations {
     testLibs
-    testRuntimeOnly.extendsFrom testLibs
+    testCompileOnly.extendsFrom testLibs
 }
 
 dependencies {
@@ -70,14 +70,10 @@ dependencies {
     compileOnly 'org.jetbrains:annotations:22.0.0'
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
 
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
-    testLibs 'com.squareup.okhttp3:okhttp:4.9.2'
+    testLibs 'net.sf.jopt-simple:jopt-simple:5.0.4'
+    testLibs 'org.ow2.asm:asm:9.2'
+    testLibs 'com.squareup.okhttp3:okhttp:4.9.3'
     testLibs 'org.slf4j:slf4j-simple:1.7.32'
-}
-
-test {
-    useJUnitPlatform()
 }
 
 jar {

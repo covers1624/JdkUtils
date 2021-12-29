@@ -9,6 +9,7 @@ import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.io.IOUtils;
 import net.covers1624.quack.util.SneakyUtils;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 
 import java.io.IOException;
@@ -16,14 +17,32 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import static org.objectweb.asm.Opcodes.*;
 
 /**
- * Generates a Java class to extract Key-value pairs of properties.
+ * Generates a class which echos all the provided program arguments as system property Key-value pairs
+ * to the program's standard output.
+ * <pre>
+ *     public static void main(String[] var0) {
+ *         PrintStream var1 = System.out;
+ *
+ *         for(int var2 = 0; var2 < var0.length; ++var2) {
+ *             var1.print(var0[var2]);
+ *             var1.print("=");
+ *             var1.println(System.getProperty(var0[var2], ""));
+ *         }
+ *     }
+ * </pre>
+ * When invoked with the following arguments <code>"java.version" "java.vendor"</code> the following
+ * standard output is generated:
+ * <pre>
+ *     java.version=1.8.0_292
+ *     java.vendor=Oracle Corporation
+ * </pre>
  * <p>
- * Even though this class is annotated as requiring Obejctweb asm. It will only be required
- * when generating anything other than {@link #DEFAULTS}.
+ * Whilst this class requires Objectweb ASM, it is only required when re-generating the PropExtract class.
  * <p>
  * Created by covers1624 on 28/10/21.
  */
@@ -31,10 +50,7 @@ import static org.objectweb.asm.Opcodes.*;
 public class JavaPropExtractGenerator {
 
     /**
-     * The list of properties extracted by this tool.
-     * <p>
-     * NOTE: Whenever this array is modified, the '/assets/PropExtract.class.bin' asset
-     * will need to be updated.
+     * The default list of properties extracted by this tool.
      */
     public static String[] DEFAULTS = {
             "java.home",
@@ -49,7 +65,7 @@ public class JavaPropExtractGenerator {
     };
 
     /**
-     * A pre-generated class containing {@link #DEFAULTS} to be extracted.
+     * A pre-generated PropExtract class.
      */
     private static final byte[] DEFAULT_CLASS_BYTES = SneakyUtils.sneaky(() -> {
         InputStream is = JavaPropExtractGenerator.class.getResourceAsStream("/assets/PropExtract.class.bin");
@@ -60,42 +76,35 @@ public class JavaPropExtractGenerator {
     });
 
     /**
-     * Write a class with {@link #DEFAULTS} properties to be extracted and write
-     * it to the provided folder with the name 'PropExtract.class'.
+     * Write a 'PropExtract.class' file into the current folder.
      *
      * @param folder The folder to write to.
      * @return The File which was created.
      * @throws IOException If an IO error occurs.
      */
     public static Path writeClass(Path folder) throws IOException {
-        return writeClass(folder, DEFAULTS);
-    }
-
-    /**
-     * Write a class with <code>properties</code> to be extracted and write
-     * it to the provided folder with the name 'PropExtract.class'.
-     *
-     * @param folder The folder to write to.
-     * @return The File which was created.
-     * @throws IOException If an IO error occurs.
-     */
-    public static Path writeClass(Path folder, String[] properties) throws IOException {
         Path classFile = folder.resolve("PropExtract.class");
         Files.createDirectories(classFile.getParent());
         try (OutputStream os = Files.newOutputStream(classFile)) {
-            os.write(properties == DEFAULTS ? DEFAULT_CLASS_BYTES : generateClass(properties));
+            os.write(DEFAULT_CLASS_BYTES);
             os.flush();
         }
         return classFile;
     }
 
-    /**
-     * Generates a minimal Java class compatible with any JVM version to
-     * export the configured properties.
-     *
-     * @return The class bytes.
-     */
-    public static byte[] generateClass(String[] properties) {
+    public static void main(String[] args) throws IOException {
+        if (args.length != 1) throw new IllegalArgumentException("Expected single argument.");
+
+        Path path = Paths.get(args[0]).toAbsolutePath();
+
+        Files.createDirectories(path.getParent());
+        try (OutputStream os = Files.newOutputStream(path)) {
+            os.write(generateClass());
+            os.flush();
+        }
+    }
+
+    public static byte[] generateClass() {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(V1_1, ACC_PUBLIC | ACC_SUPER, "PropExtract", null, "java/lang/Object", null);
         MethodVisitor mv;
@@ -110,19 +119,47 @@ public class JavaPropExtractGenerator {
 
         mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "main", "([Ljava/lang/String;)V", null, null);
         mv.visitCode();
-        for (String property : properties) {
-            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
-            mv.visitLdcInsn(property + "=");
-            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false);
 
-            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
-            mv.visitLdcInsn(property);
-            mv.visitLdcInsn("");
-            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "getProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", false);
-            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false);
-        }
+        int array = 0;
+        int out = 1;
+        int index = 2;
+
+        mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
+        mv.visitVarInsn(ASTORE, out);
+
+        Label head = new Label();
+        Label after = new Label();
+        mv.visitInsn(ICONST_0);
+        mv.visitVarInsn(ISTORE, index);
+        mv.visitLabel(head);
+        mv.visitVarInsn(ILOAD, index);
+        mv.visitVarInsn(ALOAD, array);
+        mv.visitInsn(ARRAYLENGTH);
+        mv.visitJumpInsn(IF_ICMPGE, after);
+
+        mv.visitVarInsn(ALOAD, out);
+        mv.visitVarInsn(ALOAD, array);
+        mv.visitVarInsn(ILOAD, index);
+        mv.visitInsn(AALOAD);
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false);
+
+        mv.visitVarInsn(ALOAD, out);
+        mv.visitLdcInsn("=");
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false);
+
+        mv.visitVarInsn(ALOAD, out);
+        mv.visitVarInsn(ALOAD, array);
+        mv.visitVarInsn(ILOAD, index);
+        mv.visitInsn(AALOAD);
+        mv.visitLdcInsn("");
+        mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "getProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", false);
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false);
+        mv.visitIincInsn(index, 1);
+        mv.visitJumpInsn(GOTO, head);
+
+        mv.visitLabel(after);
         mv.visitInsn(RETURN);
-        mv.visitMaxs(3, 1);
+        mv.visitMaxs(4, 3);
         mv.visitEnd();
         return cw.toByteArray();
     }

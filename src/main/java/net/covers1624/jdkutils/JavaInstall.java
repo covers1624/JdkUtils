@@ -8,6 +8,7 @@ package net.covers1624.jdkutils;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static java.util.Objects.requireNonNull;
@@ -43,6 +44,7 @@ public class JavaInstall {
     public final String runtimeVersion;
     public final Architecture architecture;
     public final boolean isOpenJ9;
+    public final boolean hasCompiler;
 
     public JavaInstall(Path javaHome, String vendor, String implName, String implVersion, String runtimeName, String runtimeVersion, Architecture architecture) {
         langVersion = requireNonNull(JavaVersion.parse(implVersion), "Unable to parse java version: " + implVersion);
@@ -54,8 +56,16 @@ public class JavaInstall {
         this.runtimeVersion = runtimeVersion;
         this.architecture = architecture;
         isOpenJ9 = implName.contains("J9");
+        // If the installation has javac, It's highly likely it's a full JDK.
+        hasCompiler = Files.exists(getExecutable(javaHome, "javac"));
     }
 
+    /**
+     * Gets the bin directory for a given java installation.
+     *
+     * @param installationDir The installation directory.
+     * @return The bin directory.
+     */
     public static Path getBinDirectory(Path installationDir) {
         return getHomeDirectory(installationDir).resolve("bin");
     }
@@ -86,8 +96,18 @@ public class JavaInstall {
      */
     public static Path getJavaExecutable(Path homeDir, boolean useJavaw) {
         OperatingSystem os = OperatingSystem.current();
-        String exe = os.exeSuffix(os.isWindows() && useJavaw ? "javaw" : "java");
-        return homeDir.resolve("bin").resolve(exe);
+        return getExecutable(homeDir, os.isWindows() && useJavaw ? "javaw" : "java");
+    }
+
+    /**
+     * Gets the given executable within the given java home directory.
+     *
+     * @param homeDir    The home directory.
+     * @param executable The executable name.
+     * @return The executable path.
+     */
+    public static Path getExecutable(Path homeDir, String executable) {
+        return homeDir.resolve("bin").resolve(OperatingSystem.current().exeSuffix(executable));
     }
 
     @Override
@@ -102,6 +122,7 @@ public class JavaInstall {
                 ", runtimeVersion='" + runtimeVersion + '\'' +
                 ", architecture=" + architecture +
                 ", isOpenJ9=" + isOpenJ9 +
+                ", hasCompiler=" + hasCompiler +
                 '}';
     }
 }

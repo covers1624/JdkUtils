@@ -18,9 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static java.util.Objects.requireNonNull;
@@ -44,7 +42,6 @@ public abstract class JavaLocator {
     protected JavaLocator(LocatorProps props) {
         this.props = props;
     }
-
 
     /**
      * Create a {@link Builder} for a {@link JavaLocator} for the current system.
@@ -87,6 +84,7 @@ public abstract class JavaLocator {
         if (install == null) return;
         if (props.filter != null && props.filter != install.langVersion) return;
         if (props.ignoreOpenJ9 && install.isOpenJ9) return;
+        if (props.ignoreJres && !install.hasCompiler) return;
 
         if (!installs.containsKey(install.javaHome.toString())) {
             installs.put(install.javaHome.toString(), install);
@@ -106,15 +104,17 @@ public abstract class JavaLocator {
         try {
             Path tempDir = Files.createTempDirectory("java_prop_extract");
             JavaPropExtractGenerator.writeClass(tempDir);
+            List<String> args = new LinkedList<>(Arrays.asList(
+                    executable.normalize().toAbsolutePath().toString(),
+                    "-Dfile.encoding=UTF8",
+                    "-cp",
+                    ".",
+                    "PropExtract"
+            ));
+            Collections.addAll(args, JavaPropExtractGenerator.DEFAULTS);
             ProcessBuilder builder = new ProcessBuilder()
                     .directory(tempDir.toFile())
-                    .command(
-                            executable.normalize().toAbsolutePath().toString(),
-                            "-Dfile.encoding=UTF8",
-                            "-cp",
-                            ".",
-                            "PropExtract"
-                    );
+                    .command(args);
 
             ByteArrayOutputStream os = new ByteArrayOutputStream();
             Process process = builder.start();
@@ -141,8 +141,15 @@ public abstract class JavaLocator {
                 }
             }
 
+            Path javaHome = Paths.get(requireNonNull(properties.get("java.home"), "Missing 'java.home' property for vm: " + executable)).toAbsolutePath();
+
+            // If we are in a 'jre' folder and the parent has a 'bin' folder, then the parent is our java home directory.
+            if (javaHome.getFileName().toString().equals("jre") && Files.exists(javaHome.getParent().resolve("bin"))) {
+                javaHome = javaHome.getParent();
+            }
+
             return new JavaInstall(
-                    Paths.get(requireNonNull(properties.get("java.home"), "Missing 'java.home' property for vm: " + executable)),
+                    javaHome,
                     requireNonNull(properties.get("java.vendor"), "Missing 'java.vendor' property for vm: " + executable),
                     requireNonNull(properties.get("java.vm.name"), "Missing 'java.name' property for vm: " + executable),
                     requireNonNull(properties.get("java.version"), "Missing 'java.version' property for vm: " + executable),
@@ -168,6 +175,7 @@ public abstract class JavaLocator {
         private boolean findIntellijJdks;
         private boolean findGradleJdks;
         private boolean ignoreOpenJ9;
+        private boolean ignoreJres;
         @Nullable
         private JavaVersion filter;
 
@@ -219,6 +227,16 @@ public abstract class JavaLocator {
         }
 
         /**
+         * If Java installations not containing a compiler should be ignored.
+         *
+         * @return The same builder.
+         */
+        public Builder ignoreJres() {
+            ignoreJres = true;
+            return this;
+        }
+
+        /**
          * If all {@link JavaLocator}s should filter for a specific Java version.
          *
          * @param filter The filter.
@@ -240,6 +258,7 @@ public abstract class JavaLocator {
                     findIntellijJdks,
                     findGradleJdks,
                     ignoreOpenJ9,
+                    ignoreJres,
                     filter
             );
             if (os.isWindows()) {
@@ -265,15 +284,17 @@ public abstract class JavaLocator {
         public final boolean findIntellijJdks;
         public final boolean findGradleJdks;
         public final boolean ignoreOpenJ9;
+        public final boolean ignoreJres;
         @Nullable
         public final JavaVersion filter;
 
-        public LocatorProps(OperatingSystem os, boolean useJavaw, boolean findIntellijJdks, boolean findGradleJdks, boolean ignoreOpenJ9, @Nullable JavaVersion filter) {
+        public LocatorProps(OperatingSystem os, boolean useJavaw, boolean findIntellijJdks, boolean findGradleJdks, boolean ignoreOpenJ9, boolean ignoreJres, @Nullable JavaVersion filter) {
             this.os = os;
             this.useJavaw = useJavaw;
             this.findIntellijJdks = findIntellijJdks;
             this.findGradleJdks = findGradleJdks;
             this.ignoreOpenJ9 = ignoreOpenJ9;
+            this.ignoreJres = ignoreJres;
             this.filter = filter;
         }
     }
