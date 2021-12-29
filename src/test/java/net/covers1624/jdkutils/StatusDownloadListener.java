@@ -6,7 +6,6 @@
 package net.covers1624.jdkutils;
 
 import net.covers1624.quack.net.download.DownloadListener;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * Created by covers1624 on 9/11/21.
@@ -34,7 +33,7 @@ public class StatusDownloadListener implements DownloadListener {
 
     @Override
     public void finish(long totalProcessed) {
-        System.out.print("\r" + StringUtils.repeat(' ', lastLen) + "\r");
+        System.out.print("\r" + repeat(' ', lastLen) + "\r");
     }
 
     private String getStatus(long complete, long total) {
@@ -46,5 +45,13 @@ public class StatusDownloadListener implements DownloadListener {
 
     protected long toKB(long bytes) {
         return (bytes + 1023) / 1024;
+    }
+
+    private static String repeat(char ch, int num) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < num; i++) {
+            builder.append(ch);
+        }
+        return builder.toString();
     }
 }

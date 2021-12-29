@@ -9,17 +9,14 @@ import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.reflect.TypeToken;
-import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
+import com.google.gson.*;
 import com.google.gson.annotations.JsonAdapter;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.gson.HashCodeAdapter;
 import net.covers1624.quack.gson.JsonUtils;
-import net.covers1624.quack.gson.PathTypeAdapter;
 import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.util.HashUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +25,9 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -40,20 +39,19 @@ import java.util.stream.Stream;
 @Requires ("org.slf4j:slf4j-api")
 @Requires ("com.google.code.gson")
 @Requires ("com.google.guava:guava")
-@Requires ("org.apache.commons:commons-lang3")
 @SuppressWarnings ("UnstableApiUsage")
 public class JdkInstallationManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JavaLocator.class);
 
     private static final Gson GSON = new Gson();
-    private static final Type INSTALLS_TYPE = new TypeToken<Map<String, Installation>>() { }.getType();
+    private static final Type INSTALLS_TYPE = new TypeToken<List<Installation>>() { }.getType();
 
     private final Path baseDir;
     private final JdkProvisioner provisioner;
     private final boolean ignoreMacosAArch64;
     private final Path manifestPath;
-    private final Map<String, Installation> installations;
+    private final List<Installation> installations;
 
     /**
      * Create a new Jdk Installation Manager.
@@ -67,10 +65,11 @@ public class JdkInstallationManager {
         this.provisioner = provisioner;
         this.ignoreMacosAArch64 = ignoreMacosAArch64;
         manifestPath = baseDir.resolve("installations.json");
-        Map<String, Installation> installs = new HashMap<>();
+        List<Installation> installs = new ArrayList<>();
         if (Files.exists(manifestPath)) {
             try {
-                installs = JsonUtils.parse(GSON, manifestPath, INSTALLS_TYPE);
+                JsonElement parsed = JsonUtils.parse(GSON, manifestPath, JsonElement.class);
+                installs = GSON.fromJson(Installation.migrate(parsed), INSTALLS_TYPE);
             } catch (IOException | JsonParseException e) {
                 // TODO, we may be better off throwing an error here.
                 LOGGER.error("Failed to parse json {}. Ignoring..", manifestPath, e);
@@ -83,14 +82,17 @@ public class JdkInstallationManager {
      * Find an existing JDK for the specified java Major version.
      *
      * @param version The Java Major version to use.
+     * @param jre     If a JRE is all that is required.
      * @return The Found JDK home directory. Otherwise <code>null</code>.
      */
     @Nullable
-    public Path findJdk(JavaVersion version) {
-        for (Map.Entry<String, Installation> entry : installations.entrySet()) {
-            if (version == JavaVersion.parse(entry.getKey())) {
-                return JavaInstall.getHomeDirectory(entry.getValue().path);
-            }
+    public Path findJdk(JavaVersion version, boolean jre) {
+        for (Installation installation : installations) {
+            if (version != JavaVersion.parse(installation.version)) continue;
+            // If we require a JDK, and the installation is a JRE, skip.
+            if (!jre && !installation.isJdk) continue;
+
+            return JavaInstall.getHomeDirectory(Paths.get(installation.path));
         }
         return null;
     }
@@ -105,18 +107,17 @@ public class JdkInstallationManager {
      * @return The JDK home directory.
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
      */
-    public Path provisionJdk(JavaVersion version, @Nullable DownloadListener listener) throws IOException {
-        Path existing = findJdk(version);
+    public Path provisionJdk(JavaVersion version, boolean jre, @Nullable DownloadListener listener) throws IOException {
+        Path existing = findJdk(version, jre);
         if (existing != null) return existing;
 
-        Pair<String, Path> pair = provisioner.provisionJdk(baseDir, listener, version, ignoreMacosAArch64);
+        ProvisionResult result = provisioner.provisionJdk(new ProvisionRequest(baseDir, version, jre, ignoreMacosAArch64), listener);
 
-        Path installation = pair.getRight();
-        assert Files.exists(installation);
+        assert Files.exists(result.baseDir);
 
-        installations.put(pair.getLeft(), new Installation(hashInstallation(installation), installation));
+        installations.add(new Installation(result.semver, result.isJdk, hashInstallation(result.baseDir), result.baseDir.toAbsolutePath().toString()));
         saveManifest();
-        return JavaInstall.getHomeDirectory(installation);
+        return JavaInstall.getHomeDirectory(result.baseDir);
     }
 
     private void saveManifest() {
@@ -152,31 +153,89 @@ public class JdkInstallationManager {
         /**
          * Provision a JDK with the given Java major version.
          *
-         * @param baseFolder The folder to place the JDK folder.
-         * @param listener   The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
-         * @param version    The Java major version to install.
-         * @return A {@link Pair} of the full semver version, and the Java Home directory provisioned into.
+         * @param request  The provision request.
+         * @param listener The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
+         * @return A {@link ProvisionResult} containing the properties about the provisioned jdk.
          * @throws IOException If there was an error provisioning the JDK.
          */
-        Pair<String, Path> provisionJdk(Path baseFolder, @Nullable DownloadListener listener, JavaVersion version, boolean ignoreMacosAArch64) throws IOException;
+        ProvisionResult provisionJdk(ProvisionRequest request, @Nullable DownloadListener listener) throws IOException;
+    }
+
+    public static class ProvisionRequest {
+
+        /**
+         * The folder to place the JDK/JRE folder.
+         */
+        public final Path baseFolder;
+        /**
+         * The java Major version to provision.
+         */
+        public final JavaVersion version;
+        /**
+         * If only a JRE is required.
+         */
+        public final boolean jre;
+        /**
+         * If macOS AArch64 should be treated as x64.
+         */
+        public final boolean ignoreMacosAArch64;
+
+        public ProvisionRequest(Path baseFolder, JavaVersion version, boolean jre, boolean ignoreMacosAArch64) {
+            this.baseFolder = baseFolder;
+            this.version = version;
+            this.jre = jre;
+            this.ignoreMacosAArch64 = ignoreMacosAArch64;
+        }
+    }
+
+    public static class ProvisionResult {
+
+        public final String semver;
+        public final Path baseDir;
+        public final boolean isJdk;
+
+        public ProvisionResult(String semver, Path baseDir, boolean isJdk) {
+            this.semver = semver;
+            this.baseDir = baseDir;
+            this.isJdk = isJdk;
+        }
     }
 
     public static class Installation {
+
+        public String version = "";
+
+        public boolean isJdk = false;
 
         @Nullable
         @JsonAdapter (HashCodeAdapter.class)
         public HashCode hash;
 
-        @JsonAdapter (PathTypeAdapter.class)
-        public Path path;
+        public String path = "";
 
         public Installation() {
         }
 
-        public Installation(@Nullable HashCode hash, Path path) {
+        public Installation(String version, boolean isJdk, @Nullable HashCode hash, String path) {
             this();
+            this.version = version;
+            this.isJdk = isJdk;
             this.hash = hash;
             this.path = path;
+        }
+
+        private static JsonElement migrate(JsonElement element) {
+            if (!element.isJsonObject()) return element;
+            JsonObject obj = element.getAsJsonObject();
+            JsonArray array = new JsonArray();
+            for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+                if (!entry.getValue().isJsonObject()) continue; // What? Don't hard crash tho.
+                JsonObject entryObj = entry.getValue().getAsJsonObject();
+                entryObj.addProperty("isJdk", true);
+                entryObj.addProperty("version", entry.getKey());
+                array.add(entryObj);
+            }
+            return array;
         }
     }
 }

@@ -11,6 +11,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
+import net.covers1624.jdkutils.JdkInstallationManager.ProvisionRequest;
+import net.covers1624.jdkutils.JdkInstallationManager.ProvisionResult;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.io.IOUtils;
@@ -24,7 +26,6 @@ import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
-import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,12 +72,12 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
 
     @Override
     @SuppressWarnings ("UnstableApiUsage")
-    public Pair<String, Path> provisionJdk(Path baseFolder, @Nullable DownloadListener listener, JavaVersion version, boolean ignoreMacosAArch64) throws IOException {
-        LOGGER.info("Attempting to provision Adoptium JDK for {}.", version);
-        List<AdoptiumRelease> releases = getReleases(version, ignoreMacosAArch64);
-        if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + version);
+    public ProvisionResult provisionJdk(ProvisionRequest request, @Nullable DownloadListener listener) throws IOException {
+        LOGGER.info("Attempting to provision Adoptium JDK for {}.", request.version);
+        List<AdoptiumRelease> releases = getReleases(request.version, request.jre, request.ignoreMacosAArch64);
+        if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + request.version);
         AdoptiumRelease release = releases.get(0);
-        if (release.binaries.isEmpty()) throw new FileNotFoundException("Adoptium returned a release, but no binaries? " + version);
+        if (release.binaries.isEmpty()) throw new FileNotFoundException("Adoptium returned a release, but no binaries? " + request.version);
         if (release.binaries.size() != 1) {
             LOGGER.warn("Adoptium returned more than one binary! Api change? Using first!");
         }
@@ -85,7 +86,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         AdoptiumRelease.Package pkg = binary._package;
         LOGGER.info("Found release '{}', Download '{}'", release.version_data.semver, pkg.link);
 
-        Path tempFile = baseFolder.resolve(pkg.name);
+        Path tempFile = request.baseFolder.resolve(pkg.name);
         tempFile.toFile().deleteOnExit();
         DownloadAction action = downloadActionSupplier.get();
         if (listener != null) {
@@ -104,12 +105,12 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             throw new IOException("Invalid Adoptium download - SHA256 Hash incorrect. Expected: " + pkg.checksum + ", Got: " + hash);
         }
 
-        Path extractedFolder = extract(baseFolder, tempFile);
+        Path extractedFolder = extract(request.baseFolder, tempFile);
 
-        return Pair.of(release.version_data.semver, extractedFolder);
+        return new ProvisionResult(release.version_data.semver, extractedFolder, "jdk".equals(binary.image_type));
     }
 
-    private List<AdoptiumRelease> getReleases(JavaVersion version, boolean ignoreMacosAArch64) throws IOException {
+    private List<AdoptiumRelease> getReleases(JavaVersion version, boolean jre, boolean ignoreMacosAArch64) throws IOException {
         DownloadAction action = downloadActionSupplier.get();
         Architecture architecture = Architecture.current();
         if (OS.isMacos() && architecture == Architecture.AARCH64 && ignoreMacosAArch64) {
@@ -117,23 +118,37 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             architecture = Architecture.X64;
         }
         StringWriter sw = new StringWriter();
-        action.setUrl(makeURL(version, architecture));
+        action.setUrl(makeURL(version, jre, architecture));
         action.setDest(sw);
         try {
             action.execute();
         } catch (HttpResponseException ex) {
-            if (ex.code != 404 || !OS.isMacos() || architecture != Architecture.AARCH64) {
+            // Non 404 is always fatal.
+            if (ex.code != 404) {
                 throw ex;
             }
 
-            LOGGER.warn("Failed to find AArch64 macOS jdk for java {}. Trying x64.", version);
-            // Try again, but let's get an ADM64 build because Rosetta exists.
-            return getReleases(version, true);
+            // If we are on macOS, and we are AArch64, try x86.
+            if (OS.isMacos() && architecture == Architecture.AARCH64) {
+                LOGGER.warn("Failed to find AArch64 macOS jdk for java {}. Trying x64.", version);
+                // Try again, but let's get an ADM64 build because Rosetta exists.
+                return getReleases(version, jre, true);
+            }
+
+            // We failed to find a JRE, find a JDK.
+            if (jre) {
+                LOGGER.warn("Failed to find JRE for java {}. Trying JDK.", version);
+                return getReleases(version, false, ignoreMacosAArch64);
+            }
+
+            // On macos,
+            throw ex;
+
         }
         return AdoptiumRelease.parseReleases(sw.toString());
     }
 
-    private static String makeURL(JavaVersion version, Architecture architecture) {
+    private static String makeURL(JavaVersion version, boolean jre, Architecture architecture) {
         String platform;
         if (OS.isWindows()) {
             platform = "windows";
@@ -149,7 +164,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
                 + version.shortString
                 + "/ga"
                 + "?project=jdk"
-                + "&image_type=jdk"
+                + "&image_type=" + (jre ? "jre" : "jdk")
                 + "&vendor=eclipse"
                 + "&jvm_impl=hotspot"
                 + "&heap_size=normal"
@@ -218,6 +233,8 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         public VersionData version_data;
 
         public static class Binary {
+
+            public String image_type;
 
             @SerializedName ("package")
             public Package _package;
