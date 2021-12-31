@@ -24,6 +24,7 @@ import net.covers1624.quack.platform.OperatingSystem;
 import net.covers1624.quack.util.HashUtils;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.jetbrains.annotations.Nullable;
@@ -34,6 +35,7 @@ import java.io.*;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
@@ -178,18 +180,19 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         try (ArchiveInputStream is = createStream(jdkArchive)) {
             ArchiveEntry entry;
             while ((entry = is.getNextEntry()) != null) {
-                if (entry.isDirectory()) continue;
                 Path file = jdksDir.resolve(entry.getName()).toAbsolutePath();
-                Files.createDirectories(file.getParent());
-                try (OutputStream os = Files.newOutputStream(file)) {
-                    IOUtils.copy(is, os);
+                if (entry.isDirectory()) {
+                    Files.createDirectories(file);
+                } else {
+                    Files.createDirectories(file.getParent());
+                    try (OutputStream os = Files.newOutputStream(file)) {
+                        IOUtils.copy(is, os);
+                    }
                 }
+                setAttributes(file, entry);
             }
         }
 
-        if (OS.isMacos() || OS.isLinux()) {
-            makeExecutable(JavaInstall.getBinDirectory(jdkDir));
-        }
         return jdkDir;
     }
 
@@ -216,10 +219,21 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         throw new UnsupportedOperationException("Unable to determine archive format of file: " + fileName);
     }
 
-    private static void makeExecutable(Path binFolder) throws IOException {
-        for (Path path : iterable(Files.list(binFolder))) {
-            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rwxrwxr-x"));
+    private static void setAttributes(Path file, ArchiveEntry entry) throws IOException {
+        Files.setLastModifiedTime(file, FileTime.fromMillis(entry.getLastModifiedDate().getTime()));
+
+        if (OS.isUnixLike() && entry instanceof TarArchiveEntry) {
+            Files.setPosixFilePermissions(file, IOUtils.parseMode(fixMode(((TarArchiveEntry) entry).getMode())));
         }
+    }
+
+    private static int fixMode(int mode) {
+        // TarArchiveEntry represents the defaults 755
+        if (mode == TarArchiveEntry.DEFAULT_DIR_MODE || mode == TarArchiveEntry.DEFAULT_FILE_MODE) {
+            return mode;
+        }
+        // But parses as 493. Convert to octal represented as base 10. (755)
+        return Integer.parseInt(Integer.toOctalString(mode));
     }
 
     public static class AdoptiumRelease {
