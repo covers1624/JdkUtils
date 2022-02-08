@@ -9,7 +9,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
 group 'net.covers1624'
 archivesBaseName = "JdkUtils"
-version '0.3.0'
+version '0.4.0'
 
 def signProps = [:]
 if (System.getenv("KEY_STORE")) {
@@ -62,6 +62,10 @@ dependencies {
         transitive = false
     }
     api('net.rubygrapefruit:native-platform-windows-i386:0.21') {
+        transitive = false
+    }
+
+    api('org.apache.maven:maven-artifact:3.8.4') {
         transitive = false
     }
 

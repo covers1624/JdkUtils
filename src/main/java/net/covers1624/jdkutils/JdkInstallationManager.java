@@ -8,10 +8,12 @@ import com.google.gson.*;
 import com.google.gson.annotations.JsonAdapter;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.ColUtils;
+import net.covers1624.quack.collection.StreamableIterable;
 import net.covers1624.quack.gson.HashCodeAdapter;
 import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.util.HashUtils;
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +23,7 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -77,19 +77,21 @@ public class JdkInstallationManager {
      * Find an existing JDK for the specified java Major version.
      *
      * @param version The Java Major version to use.
+     * @param semver  An optional semver filter.
      * @param jre     If a JRE is all that is required.
      * @return The Found JDK home directory. Otherwise <code>null</code>.
      */
     @Nullable
-    public Path findJdk(JavaVersion version, boolean jre) {
-        for (Installation installation : installations) {
-            if (version != JavaVersion.parse(installation.version)) continue;
-            // If we require a JDK, and the installation is a JRE, skip.
-            if (!jre && !installation.isJdk) continue;
+    public Path findJdk(JavaVersion version, @Nullable String semver, boolean jre) {
+        LinkedList<Installation> candidates = StreamableIterable.of(installations)
+                .filter(e -> version == JavaVersion.parse(e.version))
+                .filter(e -> semver == null || semver.equals(e.version)) // If we have a semver filter, do the filter.
+                .filter(e -> jre || e.isJdk) // If we require a JDK, make sure we get a JDK.
+                .toLinkedList();
+        if (candidates.isEmpty()) return null;
 
-            return JavaInstall.getHomeDirectory(Paths.get(installation.path));
-        }
-        return null;
+        candidates.sort(Comparator.<Installation, ComparableVersion>comparing(e -> new ComparableVersion(e.version)).reversed());
+        return JavaInstall.getHomeDirectory(Paths.get(candidates.getFirst().path));
     }
 
     /**
@@ -98,15 +100,16 @@ public class JdkInstallationManager {
      * If one already exists. That will be returned instead.
      *
      * @param version  The java Major version to use.
+     * @param semver   An optional semver filter.
      * @param listener The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
      * @return The JDK home directory.
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
      */
-    public Path provisionJdk(JavaVersion version, boolean jre, @Nullable DownloadListener listener) throws IOException {
-        Path existing = findJdk(version, jre);
+    public Path provisionJdk(JavaVersion version, @Nullable String semver, boolean jre, @Nullable DownloadListener listener) throws IOException {
+        Path existing = findJdk(version, semver, jre);
         if (existing != null) return existing;
 
-        ProvisionResult result = provisioner.provisionJdk(new ProvisionRequest(baseDir, version, jre, ignoreMacosAArch64), listener);
+        ProvisionResult result = provisioner.provisionJdk(new ProvisionRequest(baseDir, version, semver, jre, ignoreMacosAArch64), listener);
 
         assert Files.exists(result.baseDir);
 
@@ -162,22 +165,32 @@ public class JdkInstallationManager {
          * The folder to place the JDK/JRE folder.
          */
         public final Path baseFolder;
+
         /**
          * The java Major version to provision.
          */
         public final JavaVersion version;
+
+        /**
+         * An optional Semver filter.
+         */
+        @Nullable
+        public final String semver;
+
         /**
          * If only a JRE is required.
          */
         public final boolean jre;
+
         /**
          * If macOS AArch64 should be treated as x64.
          */
         public final boolean ignoreMacosAArch64;
 
-        public ProvisionRequest(Path baseFolder, JavaVersion version, boolean jre, boolean ignoreMacosAArch64) {
+        public ProvisionRequest(Path baseFolder, JavaVersion version, @Nullable String semver, boolean jre, boolean ignoreMacosAArch64) {
             this.baseFolder = baseFolder;
             this.version = version;
+            this.semver = semver;
             this.jre = jre;
             this.ignoreMacosAArch64 = ignoreMacosAArch64;
         }

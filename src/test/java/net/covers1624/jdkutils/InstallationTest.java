@@ -27,6 +27,8 @@ public class InstallationTest {
         OptionSpec<String> javaVersionOpt = parser.accepts("version", "The java version.")
                 .withRequiredArg()
                 .defaultsTo("16");
+        OptionSpec<String> semverOpt = parser.accepts("semver", "The java semver version.")
+                .withRequiredArg();
         OptionSpec<Void> ignoreMacosAArch64 = parser.accepts("ignore-mac-aarch64", "If AArch64 Mac should be treated as X64.");
         OptionSpec<Void> jreOnly = parser.accepts("jre", "If a JRE is all that is required.");
         OptionSet optSet = parser.parse(args);
@@ -48,7 +50,7 @@ public class InstallationTest {
                 optSet.has(ignoreMacosAArch64)
         );
         assert javaVersion != null;
-        Path homeDir = jdkInstallationManager.provisionJdk(javaVersion, optSet.has(jreOnly), null);
+        Path homeDir = jdkInstallationManager.provisionJdk(javaVersion, optSet.valueOf(semverOpt), optSet.has(jreOnly), null);
         LOGGER.info("Provisioned Java home installation: {}", homeDir);
 
         LOGGER.info("Testing installed JDK..");

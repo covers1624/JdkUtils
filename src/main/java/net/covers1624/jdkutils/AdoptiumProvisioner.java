@@ -31,14 +31,11 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
 import java.util.zip.GZIPInputStream;
-
-import static net.covers1624.quack.collection.ColUtils.iterable;
 
 /**
  * A {@link JdkInstallationManager.JdkProvisioner} capable of provisioning
@@ -73,6 +70,12 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         LOGGER.info("Attempting to provision Adoptium JDK for {}.", request.version);
         List<AdoptiumRelease> releases = getReleases(request.version, request.jre, request.ignoreMacosAArch64);
         if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + request.version);
+        if (request.semver != null) {
+            releases.removeIf(e -> !e.version_data.semver.equals(request.semver));
+            if (releases.isEmpty()) {
+                throw new FileNotFoundException("Unable to locate java semver '" + request.semver + "' on Adoptium.");
+            }
+        }
         AdoptiumRelease release = releases.get(0);
         if (release.binaries.isEmpty()) throw new FileNotFoundException("Adoptium returned a release, but no binaries? " + request.version);
         if (release.binaries.size() != 1) {
