@@ -26,6 +26,8 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Stream;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * Capable of managing custom installations of Java JDK's.
  * <p>
@@ -98,9 +100,26 @@ public class JdkInstallationManager {
      * Provision a JDK for the specified version.
      * <p>
      * If one already exists. That will be returned instead.
+     * <p>
+     * Overload of {@link #provisionJdk(JavaVersion, String, boolean, DownloadListener)} which
+     * only takes a semver version.
+     *
+     * @param semver   An optional semver filter.
+     * @param listener The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
+     * @return The JDK home directory.
+     * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
+     */
+    public Path provisionJdk(String semver, boolean jre, @Nullable DownloadListener listener) throws IOException {
+        return provisionJdk(requireNonNull(JavaVersion.parse(semver)), semver, jre, listener);
+    }
+
+    /**
+     * Provision a JDK for the specified version.
+     * <p>
+     * If one already exists. That will be returned instead.
      *
      * @param version  The java Major version to use.
-     * @param semver   An optional semver filter.
+     * @param semver   An optional semver filter for the specified major version.
      * @param listener The {@link DownloadListener} to use when provisioning the new JDK. May be <code>null</code>.
      * @return The JDK home directory.
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
