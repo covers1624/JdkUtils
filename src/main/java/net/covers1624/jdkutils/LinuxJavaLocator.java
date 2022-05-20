@@ -33,6 +33,9 @@ public class LinuxJavaLocator extends JavaLocator {
         findJavasInFolder(installs, Paths.get("/opt/jdk"));
         findJavasInFolder(installs, Paths.get("/opt/jdks"));
 
+        // Locally installed locations
+        findJavasInFolder(installs, Paths.get(System.getProperty("user.home"), ".local/jdks"));
+
         if (props.findGradleJdks) {
             // Gradle installed
             findJavasInFolder(installs, Paths.get(System.getProperty("user.home"), ".gradle/jdks"));
