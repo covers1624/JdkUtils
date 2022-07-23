@@ -68,14 +68,9 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
     @SuppressWarnings ("UnstableApiUsage")
     public ProvisionResult provisionJdk(ProvisionRequest request, @Nullable DownloadListener listener) throws IOException {
         LOGGER.info("Attempting to provision Adoptium JDK for {}.", request.version);
-        List<AdoptiumRelease> releases = getReleases(request.version, request.jre, request.ignoreMacosAArch64);
+        List<AdoptiumRelease> releases = getReleases(request.version, request.semver, request.jre, request.ignoreMacosAArch64);
         if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + request.version);
-        if (request.semver != null) {
-            releases.removeIf(e -> !e.version_data.semver.equals(request.semver));
-            if (releases.isEmpty()) {
-                throw new FileNotFoundException("Unable to locate java semver '" + request.semver + "' on Adoptium.");
-            }
-        }
+
         AdoptiumRelease release = releases.get(0);
         if (release.binaries.isEmpty()) throw new FileNotFoundException("Adoptium returned a release, but no binaries? " + request.version);
         if (release.binaries.size() != 1) {
@@ -110,7 +105,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         return new ProvisionResult(release.version_data.semver, extractedFolder, "jdk".equals(binary.image_type));
     }
 
-    private List<AdoptiumRelease> getReleases(JavaVersion version, boolean jre, boolean ignoreMacosAArch64) throws IOException {
+    private List<AdoptiumRelease> getReleases(JavaVersion version, @Nullable String semver, boolean jre, boolean ignoreMacosAArch64) throws IOException {
         DownloadAction action = downloadActionSupplier.get();
         Architecture architecture = Architecture.current();
         if (OS.isMacos() && architecture == Architecture.AARCH64 && ignoreMacosAArch64) {
@@ -118,7 +113,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             architecture = Architecture.X64;
         }
         StringWriter sw = new StringWriter();
-        action.setUrl(makeURL(version, jre, architecture));
+        action.setUrl(makeURL(version, semver, jre, architecture));
         action.setDest(sw);
         try {
             action.execute();
@@ -132,13 +127,13 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             if (OS.isMacos() && architecture == Architecture.AARCH64) {
                 LOGGER.warn("Failed to find AArch64 macOS jdk for java {}. Trying x64.", version);
                 // Try again, but let's get an ADM64 build because Rosetta exists.
-                return getReleases(version, jre, true);
+                return getReleases(version, semver, jre, true);
             }
 
             // We failed to find a JRE, find a JDK.
             if (jre) {
                 LOGGER.warn("Failed to find JRE for java {}. Trying JDK.", version);
-                return getReleases(version, false, ignoreMacosAArch64);
+                return getReleases(version, semver, false, ignoreMacosAArch64);
             }
 
             // On macos,
@@ -148,7 +143,13 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         return AdoptiumRelease.parseReleases(sw.toString());
     }
 
-    private static String makeURL(JavaVersion version, boolean jre, Architecture architecture) {
+    private static String makeURL(JavaVersion version, @Nullable String semver, boolean jre, Architecture architecture) {
+        String url = ADOPTIUM_URL + "/v3/assets";
+        if (semver != null) {
+            url += "/version/" + semver;
+        } else {
+            url += "/feature_releases/" + version.shortString + "/ga";
+        }
         String platform;
         if (OS.isWindows()) {
             platform = "windows";
@@ -159,10 +160,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         } else {
             throw new UnsupportedOperationException("Unsupported operating system.");
         }
-        return ADOPTIUM_URL
-                + "/v3/assets/feature_releases/"
-                + version.shortString
-                + "/ga"
+        return url
                 + "?project=jdk"
                 + "&image_type=" + (jre ? "jre" : "jdk")
                 + "&vendor=eclipse"
