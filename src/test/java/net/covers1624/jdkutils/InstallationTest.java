@@ -25,8 +25,7 @@ public class InstallationTest {
 
         OptionSpec<Void> helpOpt = parser.acceptsAll(asList("h", "help"), "Prints this help").forHelp();
         OptionSpec<String> javaVersionOpt = parser.accepts("version", "The java version.")
-                .withRequiredArg()
-                .defaultsTo("16");
+                .withRequiredArg();
         OptionSpec<String> semverOpt = parser.accepts("semver", "The java semver version.")
                 .withRequiredArg();
         OptionSpec<Void> ignoreMacosAArch64 = parser.accepts("ignore-mac-aarch64", "If AArch64 Mac should be treated as X64.");
@@ -38,7 +37,16 @@ public class InstallationTest {
             System.exit(-1);
         }
 
-        JavaVersion javaVersion = JavaVersion.parse(optSet.valueOf(javaVersionOpt));
+
+        JavaVersion javaVersion;
+        if (optSet.has(javaVersionOpt)) {
+            javaVersion = JavaVersion.parse(optSet.valueOf(javaVersionOpt));
+        } else if (optSet.has(semverOpt)) {
+            javaVersion = JavaVersion.parse(optSet.valueOf(semverOpt));
+        } else {
+            javaVersion = JavaVersion.JAVA_16;
+        }
+
         JdkInstallationManager jdkInstallationManager = new JdkInstallationManager(
                 Paths.get("jdks"),
                 new AdoptiumProvisioner(() -> {

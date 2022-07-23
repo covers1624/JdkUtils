@@ -27,6 +27,7 @@ public class LocatorTest {
         OptionSpec<Void> ignoreOpenJ9 = parser.accepts("ignore-openj9", "Ignore OpenJ9 VMs.");
         OptionSpec<Void> useJavaw = parser.accepts("use-javaw", "If javaw should be preferred on Windows.");
         OptionSpec<Void> ignoreJres = parser.accepts("ignore-jres", "If installations not containing javac should be ignored.");
+        OptionSpec<Void> rawOpt = parser.accepts("raw", "Dump raw data.");
         OptionSet optSet = parser.parse(args);
 
         if (optSet.has(helpOpt)) {
@@ -55,7 +56,11 @@ public class LocatorTest {
         List<JavaInstall> installs = builder.build().findJavaVersions();
         LOGGER.info("Found {} Java installs.", installs.size());
         for (JavaInstall install : installs) {
-            LOGGER.info("Version: '{}', Lang version {}, Home '{}', Has Compiler: '{}'", install.implVersion, install.langVersion, install.javaHome, install.hasCompiler);
+            if (optSet.has(rawOpt)) {
+                LOGGER.info("{}", install);
+            } else {
+                LOGGER.info("Version: '{}', Lang version {}, Home '{}', Has Compiler: '{}'", install.implVersion, install.langVersion, install.javaHome, install.hasCompiler);
+            }
         }
     }
 }
