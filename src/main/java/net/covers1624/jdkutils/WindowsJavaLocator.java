@@ -64,7 +64,7 @@ public class WindowsJavaLocator extends JavaLocator {
     private static final String[] PATHS = {
             "C:/Program Files/AdoptOpenJDK/",
             "C:/Program Files/Eclipse Foundation/",
-            "C:/Program Files/Eclipse Adoptium/"
+            "C:/Program Files/Eclipse Adoptium/",
             "C:/Program Files/Java/",
             "C:/Program Files/Microsoft/",
             "C:/Program Files (x86)/AdoptOpenJDK/",
