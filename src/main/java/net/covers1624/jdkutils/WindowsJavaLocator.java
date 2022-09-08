@@ -46,6 +46,10 @@ public class WindowsJavaLocator extends JavaLocator {
             /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Eclipse Foundation\\JRE",
             /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Wow6432Node\\Eclipse Foundation\\JDK",
             /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Wow6432Node\\Eclipse Foundation\\JRE",
+            /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Eclipse Adoptium\\JDK",
+            /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Eclipse Adoptium\\JRE",
+            /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Wow6432Node\\Eclipse Adoptium\\JDK",
+            /*HKEY_LOCAL_MACHINE\\*/ "SOFTWARE\\Wow6432Node\\Eclipse Adoptium\\JRE",
     };
 
     // Microsoft (OpenJDK).
@@ -60,10 +64,12 @@ public class WindowsJavaLocator extends JavaLocator {
     private static final String[] PATHS = {
             "C:/Program Files/AdoptOpenJDK/",
             "C:/Program Files/Eclipse Foundation/",
+            "C:/Program Files/Eclipse Adoptium/",
             "C:/Program Files/Java/",
             "C:/Program Files/Microsoft/",
             "C:/Program Files (x86)/AdoptOpenJDK/",
             "C:/Program Files (x86)/Eclipse Foundation/",
+            "C:/Program Files (x86)/Eclipse Adoptium/",
             "C:/Program Files (x86)/Java",
             "C:/Program Files (x86)/Microsoft/",
     };
