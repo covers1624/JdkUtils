@@ -3,6 +3,7 @@ package net.covers1624.jdkutils;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import net.covers1624.jdkutils.JdkInstallationManager.ProvisionRequest;
 import net.covers1624.quack.net.DownloadAction;
 import net.covers1624.quack.net.okhttp.OkHttpDownloadAction;
 import org.slf4j.Logger;
@@ -18,7 +19,7 @@ import static java.util.Arrays.asList;
  */
 public class InstallationTest {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LocatorTest.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(InstallationTest.class);
 
     public static void main(String[] args) throws Throwable {
         OptionParser parser = new OptionParser();
@@ -28,8 +29,8 @@ public class InstallationTest {
                 .withRequiredArg();
         OptionSpec<String> semverOpt = parser.accepts("semver", "The java semver version.")
                 .withRequiredArg();
-        OptionSpec<Void> ignoreMacosAArch64 = parser.accepts("ignore-mac-aarch64", "If AArch64 Mac should be treated as X64.");
-        OptionSpec<Void> jreOnly = parser.accepts("jre", "If a JRE is all that is required.");
+        OptionSpec<Void> ignoreMacosAArch64Opt = parser.accepts("ignore-mac-aarch64", "If AArch64 Mac should be treated as X64.");
+        OptionSpec<Void> preferJreOpt = parser.accepts("jre", "If a JRE is all that is required.");
         OptionSet optSet = parser.parse(args);
 
         if (optSet.has(helpOpt)) {
@@ -37,12 +38,14 @@ public class InstallationTest {
             System.exit(-1);
         }
 
+        String version = optSet.valueOf(javaVersionOpt);
+        String semver = optSet.valueOf(semverOpt);
 
         JavaVersion javaVersion;
-        if (optSet.has(javaVersionOpt)) {
-            javaVersion = JavaVersion.parse(optSet.valueOf(javaVersionOpt));
-        } else if (optSet.has(semverOpt)) {
-            javaVersion = JavaVersion.parse(optSet.valueOf(semverOpt));
+        if (version != null) {
+            javaVersion = JavaVersion.parse(version);
+        } else if (semver != null) {
+            javaVersion = JavaVersion.parse(semver);
         } else {
             javaVersion = JavaVersion.JAVA_16;
         }
@@ -52,13 +55,19 @@ public class InstallationTest {
                 new AdoptiumProvisioner(() -> {
                     DownloadAction action = new OkHttpDownloadAction();
                     action.setQuiet(false);
-                    action.setDownloadListener(new StatusDownloadListener());
                     return action;
-                }),
-                optSet.has(ignoreMacosAArch64)
+                })
         );
         assert javaVersion != null;
-        Path homeDir = jdkInstallationManager.provisionJdk(javaVersion, optSet.valueOf(semverOpt), optSet.has(jreOnly), null);
+        ProvisionRequest.Builder builder = new ProvisionRequest.Builder()
+                .forVersion(javaVersion)
+                .preferJRE(optSet.has(preferJreOpt))
+                .ignoreMacosAArch64(optSet.has(ignoreMacosAArch64Opt))
+                .downloadListener(new StatusDownloadListener());
+        if (semver != null) {
+            builder.withSemver(semver);
+        }
+        Path homeDir = jdkInstallationManager.provisionJdk(builder.build());
         LOGGER.info("Provisioned Java home installation: {}", homeDir);
 
         LOGGER.info("Testing installed JDK..");
@@ -66,7 +75,7 @@ public class InstallationTest {
         if (install == null) {
             LOGGER.info("Failed to parse java install.");
         } else {
-            LOGGER.info("Version: '{}', Lang version {}, Home '{}', Has Compiler: '{}'", install.implVersion, install.langVersion, install.javaHome, install.hasCompiler);
+            LOGGER.info("Version: '{}', Lang version {}, Architecture {}, Home '{}', Has Compiler: '{}'", install.implVersion, install.langVersion, install.architecture, install.javaHome, install.hasCompiler);
         }
     }
 }

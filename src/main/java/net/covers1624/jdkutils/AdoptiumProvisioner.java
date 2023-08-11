@@ -13,7 +13,6 @@ import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.io.IOUtils;
 import net.covers1624.quack.net.DownloadAction;
 import net.covers1624.quack.net.HttpResponseException;
-import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
 import net.covers1624.quack.util.HashUtils;
@@ -66,12 +65,12 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
 
     @Override
     @SuppressWarnings ("UnstableApiUsage")
-    public ProvisionResult provisionJdk(ProvisionRequest request, @Nullable DownloadListener listener) throws IOException {
+    public ProvisionResult provisionJdk(Path baseDir, ProvisionRequest request) throws IOException {
         LOGGER.info("Attempting to provision Adoptium JDK for {}.", request.version);
-        List<AdoptiumRelease> releases = getReleases(request.version, request.semver, request.jre, request.ignoreMacosAArch64);
-        if (releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + request.version);
+        ReleaseResult result = getReleases(request.version, request.semver, request.preferJre, request.ignoreMacosAArch64);
+        if (result.releases.isEmpty()) throw new FileNotFoundException("Adoptium does not have any releases for " + request.version);
 
-        AdoptiumRelease release = releases.get(0);
+        AdoptiumRelease release = result.releases.get(0);
         if (release.binaries.isEmpty()) throw new FileNotFoundException("Adoptium returned a release, but no binaries? " + request.version);
         if (release.binaries.size() != 1) {
             LOGGER.warn("Adoptium returned more than one binary! Api change? Using first!");
@@ -81,11 +80,11 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         AdoptiumRelease.Package pkg = binary._package;
         LOGGER.info("Found release '{}', Download '{}'", release.version_data.semver, pkg.link);
 
-        Path tempFile = request.baseFolder.resolve(pkg.name);
+        Path tempFile = baseDir.resolve(pkg.name);
         tempFile.toFile().deleteOnExit();
         DownloadAction action = downloadActionSupplier.get();
-        if (listener != null) {
-            action.setDownloadListener(listener);
+        if (request.downloadListener != null) {
+            action.setDownloadListener(request.downloadListener);
         }
         action.setUrl(pkg.link);
         action.setDest(tempFile);
@@ -100,12 +99,12 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             throw new IOException("Invalid Adoptium download - SHA256 Hash incorrect. Expected: " + pkg.checksum + ", Got: " + hash);
         }
 
-        Path extractedFolder = extract(request.baseFolder, tempFile);
+        Path extractedFolder = extract(baseDir, tempFile, result.architecture);
 
-        return new ProvisionResult(release.version_data.semver, extractedFolder, "jdk".equals(binary.image_type));
+        return new ProvisionResult(release.version_data.semver, extractedFolder, "jdk".equals(binary.image_type), result.architecture);
     }
 
-    private List<AdoptiumRelease> getReleases(JavaVersion version, @Nullable String semver, boolean jre, boolean ignoreMacosAArch64) throws IOException {
+    private ReleaseResult getReleases(JavaVersion version, @Nullable String semver, boolean jre, boolean ignoreMacosAArch64) throws IOException {
         DownloadAction action = downloadActionSupplier.get();
         Architecture architecture = Architecture.current();
         if (OS.isMacos() && architecture == Architecture.AARCH64 && ignoreMacosAArch64) {
@@ -140,7 +139,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             throw ex;
 
         }
-        return AdoptiumRelease.parseReleases(sw.toString());
+        return new ReleaseResult(AdoptiumRelease.parseReleases(sw.toString()), architecture);
     }
 
     private static String makeURL(JavaVersion version, @Nullable String semver, boolean jre, Architecture architecture) {
@@ -170,13 +169,19 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
                 + "&os=" + platform;
     }
 
-    private static Path extract(Path jdksDir, Path jdkArchive) throws IOException {
-        LOGGER.info("Extracting Adoptium archive '{}' into '{}' ", jdkArchive, jdksDir);
-        Path jdkDir = jdksDir.resolve(getBasePath(jdkArchive));
+    private static Path extract(Path jdksDir, Path jdkArchive, Architecture architecture) throws IOException {
+        String basePath = removeStart('/', removeEnd(getBasePath(jdkArchive), '/'));
+        String newBasePath = basePath + "_" + architecture.name().toLowerCase(Locale.ROOT);
+        Path jdkDir = jdksDir.resolve(newBasePath);
+        LOGGER.info("Extracting Adoptium archive '{}' into '{}' ", jdkArchive, jdkDir);
         try (ArchiveInputStream is = createStream(jdkArchive)) {
             ArchiveEntry entry;
             while ((entry = is.getNextEntry()) != null) {
-                Path file = jdksDir.resolve(entry.getName()).toAbsolutePath();
+                String eName = entry.getName().replace('\\', '/');
+                eName = removeStart('/', eName);
+                eName = removeStart(basePath, eName);
+                eName = removeStart('/', eName);
+                Path file = jdkDir.resolve(eName).toAbsolutePath();
                 if (entry.isDirectory()) {
                     Files.createDirectories(file);
                 } else {
@@ -197,7 +202,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             ArchiveEntry entry;
             while ((entry = is.getNextEntry()) != null) {
                 if (entry.isDirectory()) {
-                    return entry.getName();
+                    return entry.getName().replace('\\', '/');
                 }
             }
         }
@@ -230,6 +235,45 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         }
         // But parses as 493. Convert to octal represented as base 10. (755)
         return Integer.parseInt(Integer.toOctalString(mode));
+    }
+
+    private static String removeStart(char ch, @Nullable String str) {
+        if (str == null || str.isEmpty()) return "";
+
+        if (str.charAt(0) == ch) {
+            return str.substring(1);
+        }
+        return str;
+    }
+
+    private static String removeStart(String s, @Nullable String str) {
+        if (str == null || str.isEmpty()) return "";
+
+        if (str.startsWith(s)) {
+            return str.substring(s.length());
+        }
+        return str;
+    }
+
+    private static String removeEnd(@Nullable String str, char ch) {
+        if (str == null || str.isEmpty()) return "";
+
+        int len = str.length();
+        if (str.charAt(len - 1) == ch) {
+            return str.substring(0, len - 1);
+        }
+        return str;
+    }
+
+    public static class ReleaseResult {
+
+        public final List<AdoptiumRelease> releases;
+        public final Architecture architecture;
+
+        public ReleaseResult(List<AdoptiumRelease> releases, Architecture architecture) {
+            this.releases = releases;
+            this.architecture = architecture;
+        }
     }
 
     public static class AdoptiumRelease {
