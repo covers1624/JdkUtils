@@ -99,7 +99,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             throw new IOException("Invalid Adoptium download - SHA256 Hash incorrect. Expected: " + pkg.checksum + ", Got: " + hash);
         }
 
-        Path extractedFolder = extract(baseDir, tempFile);
+        Path extractedFolder = extract(baseDir, tempFile, result.architecture);
 
         return new ProvisionResult(release.version_data.semver, extractedFolder, "jdk".equals(binary.image_type), result.architecture);
     }
@@ -169,13 +169,19 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
                 + "&os=" + platform;
     }
 
-    private static Path extract(Path jdksDir, Path jdkArchive) throws IOException {
-        LOGGER.info("Extracting Adoptium archive '{}' into '{}' ", jdkArchive, jdksDir);
-        Path jdkDir = jdksDir.resolve(getBasePath(jdkArchive));
+    private static Path extract(Path jdksDir, Path jdkArchive, Architecture architecture) throws IOException {
+        String basePath = removeStart('/', removeEnd(getBasePath(jdkArchive), '/'));
+        String newBasePath = basePath + "_" + architecture.name().toLowerCase(Locale.ROOT);
+        Path jdkDir = jdksDir.resolve(newBasePath);
+        LOGGER.info("Extracting Adoptium archive '{}' into '{}' ", jdkArchive, jdkDir);
         try (ArchiveInputStream is = createStream(jdkArchive)) {
             ArchiveEntry entry;
             while ((entry = is.getNextEntry()) != null) {
-                Path file = jdksDir.resolve(entry.getName()).toAbsolutePath();
+                String eName = entry.getName().replace('\\', '/');
+                eName = removeStart('/', eName);
+                eName = removeStart(basePath, eName);
+                eName = removeStart('/', eName);
+                Path file = jdkDir.resolve(eName).toAbsolutePath();
                 if (entry.isDirectory()) {
                     Files.createDirectories(file);
                 } else {
@@ -196,7 +202,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
             ArchiveEntry entry;
             while ((entry = is.getNextEntry()) != null) {
                 if (entry.isDirectory()) {
-                    return entry.getName();
+                    return entry.getName().replace('\\', '/');
                 }
             }
         }
@@ -229,6 +235,34 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         }
         // But parses as 493. Convert to octal represented as base 10. (755)
         return Integer.parseInt(Integer.toOctalString(mode));
+    }
+
+    private static String removeStart(char ch, @Nullable String str) {
+        if (str == null || str.isEmpty()) return "";
+
+        if (str.charAt(0) == ch) {
+            return str.substring(1);
+        }
+        return str;
+    }
+
+    private static String removeStart(String s, @Nullable String str) {
+        if (str == null || str.isEmpty()) return "";
+
+        if (str.startsWith(s)) {
+            return str.substring(s.length());
+        }
+        return str;
+    }
+
+    private static String removeEnd(@Nullable String str, char ch) {
+        if (str == null || str.isEmpty()) return "";
+
+        int len = str.length();
+        if (str.charAt(len - 1) == ch) {
+            return str.substring(0, len - 1);
+        }
+        return str;
     }
 
     public static class ReleaseResult {
