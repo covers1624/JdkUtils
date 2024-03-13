@@ -71,7 +71,7 @@ public class InstallationTest {
         LOGGER.info("Provisioned Java home installation: {}", homeDir);
 
         LOGGER.info("Testing installed JDK..");
-        JavaInstall install = JavaLocator.parseInstall(JavaInstall.getJavaExecutable(homeDir, false));
+        JavaInstall install = JavaInstall.parse(JavaInstall.getJavaExecutable(homeDir, false));
         if (install == null) {
             LOGGER.info("Failed to parse java install.");
         } else {

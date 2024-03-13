@@ -2,6 +2,7 @@ package net.covers1624.jdkutils;
 
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
+import net.covers1624.jdkutils.locator.JavaLocator;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.collection.StreamableIterable;

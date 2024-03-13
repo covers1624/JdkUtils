@@ -47,7 +47,7 @@ configurations {
 
 dependencies {
     api 'org.slf4j:slf4j-api:1.7.32'
-    api 'net.covers1624:Quack:0.4.0.44'
+    api 'net.covers1624:Quack:0.4.10.96'
 
     api 'com.google.code.gson:gson:2.8.9'
 

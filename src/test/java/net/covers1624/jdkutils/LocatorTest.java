@@ -3,6 +3,7 @@ package net.covers1624.jdkutils;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import net.covers1624.jdkutils.locator.JavaLocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,7 +51,7 @@ public class LocatorTest {
             builder.useJavaw();
         }
         if (optSet.has(ignoreJres)) {
-            builder.ignoreJres();
+            builder.requireJdk();
         }
 
         List<JavaInstall> installs = builder.build().findJavaVersions();

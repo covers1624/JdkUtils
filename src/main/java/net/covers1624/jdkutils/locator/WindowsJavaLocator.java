@@ -1,6 +1,7 @@
-package net.covers1624.jdkutils;
+package net.covers1624.jdkutils.locator;
 
-import net.covers1624.quack.annotation.Requires;
+import net.covers1624.jdkutils.JavaInstall;
+import net.covers1624.quack.collection.FastStream;
 import net.rubygrapefruit.platform.MissingRegistryEntryException;
 import net.rubygrapefruit.platform.Native;
 import net.rubygrapefruit.platform.WindowsRegistry;
@@ -9,8 +10,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Capable of locating Java installations on a Windows system using both
@@ -74,44 +76,37 @@ public class WindowsJavaLocator extends JavaLocator {
             "C:/Program Files (x86)/Microsoft/",
     };
 
-    WindowsJavaLocator(LocatorProps props) {
-        super(props);
+    WindowsJavaLocator(boolean useJavaw) {
+        super(useJavaw);
+        Native.init(null);
     }
 
     @Override
     public List<JavaInstall> findJavaVersions() throws IOException {
-        Native.init(null);
         WindowsRegistry registry = Native.get(WindowsRegistry.class);
-        Map<String, JavaInstall> installs = new LinkedHashMap<>();
+
+        List<JavaInstall> installs = new ArrayList<>();
         findAll(registry, installs, ORACLE, "", "JavaHome");
         findAll(registry, installs, ADOPT_OPEN_JDK, join("hotspot", "MSI"), "Path");
         findAll(registry, installs, ADOPTIUM, join("hotspot", "MSI"), "Path");
         findAll(registry, installs, MICROSOFT, join("hotspot", "MSI"), "Path");
+
         for (String path : PATHS) {
             findJavasInFolder(installs, Paths.get(path));
         }
-        if (props.findGradleJdks) {
-            // Gradle installed
-            findJavasInFolder(installs, Paths.get(System.getProperty("user.home"), ".gradle/jdks"));
-        }
-        if (props.findIntellijJdks) {
-            // Intellij installed
-            findJavasInFolder(installs, Paths.get(System.getProperty("user.home"), ".jdks"));
-        }
-        return new ArrayList<>(installs.values());
+        return installs;
     }
 
-    private void findAll(WindowsRegistry registry, Map<String, JavaInstall> installs, String[] keys, String keySuffix, String pathKey) {
+    private void findAll(WindowsRegistry registry, List<JavaInstall> installs, String[] keys, String keySuffix, String pathKey) throws IOException {
         for (String key : keys) {
             for (String subkey : getSubkeys(registry, WindowsRegistry.Key.HKEY_LOCAL_MACHINE, key)) {
                 Path javaHome = getPathValue(registry, WindowsRegistry.Key.HKEY_LOCAL_MACHINE, join(subkey, keySuffix), pathKey);
                 if (javaHome == null) continue;
 
-                javaHome = javaHome.toAbsolutePath();
+                javaHome = javaHome.toRealPath(); // Ensure we nuke symlinks/junctions.
 
                 Path javaExecutable = getJavaExecutable(JavaInstall.getHomeDirectory(javaHome));
-                JavaInstall javaInstall = parseInstall(javaExecutable);
-                considerJava(installs, javaInstall);
+                addJavaInstall(installs, JavaInstall.parse(javaExecutable));
             }
         }
     }
@@ -127,17 +122,17 @@ public class WindowsJavaLocator extends JavaLocator {
 
     private static List<String> getSubkeys(WindowsRegistry registry, WindowsRegistry.Key key, String subkey) {
         try {
-            return registry.getSubkeys(key, subkey).stream()
+            return FastStream.of(registry.getSubkeys(key, subkey))
                     .map(e -> join(subkey, e))
-                    .collect(Collectors.toList());
+                    .toList();
         } catch (MissingRegistryEntryException e) {
             return Collections.emptyList();
         }
     }
 
     private static String join(String... strs) {
-        return Arrays.stream(strs)
+        return FastStream.of(strs)
                 .filter(e -> e != null && !e.isEmpty())
-                .collect(Collectors.joining("\\"));
+                .join("\\");
     }
 }
