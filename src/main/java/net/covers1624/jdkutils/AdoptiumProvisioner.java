@@ -1,7 +1,5 @@
 package net.covers1624.jdkutils;
 
-import com.google.common.hash.HashCode;
-import com.google.common.hash.Hashing;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
@@ -45,8 +43,6 @@ import java.util.zip.GZIPInputStream;
 
 @Requires ("org.slf4j:slf4j-api")
 @Requires ("com.google.code.gson")
-@Requires ("com.google.guava:guava")
-@Requires ("org.apache.commons:commons-lang3")
 @Requires ("org.apache.commons:commons-compress")
 public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisioner {
 
@@ -64,7 +60,6 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
     }
 
     @Override
-    @SuppressWarnings ("UnstableApiUsage")
     public ProvisionResult provisionJdk(Path baseDir, ProvisionRequest request) throws IOException {
         LOGGER.info("Attempting to provision Adoptium JDK for {}.", request.version);
         ReleaseResult result = getReleases(request.version, request.semver, request.preferJre, request.ignoreMacosAArch64);
@@ -91,11 +86,11 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         action.execute();
 
         long size = Files.size(tempFile);
-        HashCode hash = HashUtils.hash(Hashing.sha256(), tempFile);
         if (size != pkg.size) {
             throw new IOException("Invalid Adoptium download - Size incorrect. Expected: " + pkg.size + ", Got: " + size);
         }
-        if (!HashUtils.equals(hash, pkg.checksum)) {
+        String hash = Utils.hashFile("SHA256", tempFile);
+        if (!hash.equals(pkg.checksum)) {
             throw new IOException("Invalid Adoptium download - SHA256 Hash incorrect. Expected: " + pkg.checksum + ", Got: " + hash);
         }
 

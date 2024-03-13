@@ -1,20 +1,14 @@
 package net.covers1624.jdkutils;
 
-import com.google.common.hash.HashCode;
-import com.google.common.hash.Hasher;
-import com.google.common.hash.Hashing;
-import com.google.common.reflect.TypeToken;
 import com.google.gson.*;
-import com.google.gson.annotations.JsonAdapter;
+import com.google.gson.reflect.TypeToken;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.collection.StreamableIterable;
-import net.covers1624.quack.gson.HashCodeAdapter;
 import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
-import net.covers1624.quack.util.HashUtils;
 import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -25,6 +19,7 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -37,8 +32,6 @@ import static java.util.Objects.requireNonNull;
  */
 @Requires ("org.slf4j:slf4j-api")
 @Requires ("com.google.code.gson")
-@Requires ("com.google.guava:guava")
-@SuppressWarnings ("UnstableApiUsage")
 public class JdkInstallationManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JavaLocator.class);
@@ -129,16 +122,16 @@ public class JdkInstallationManager {
     }
 
     @Nullable
-    private HashCode hashInstallation(Path installation) {
+    private String hashInstallation(Path installation) {
         try (Stream<Path> files = Files.walk(installation)) {
-            Hasher hasher = Hashing.sha256().newHasher();
+            MessageDigest digest = Utils.getDigest("SHA256");
             // Sort files before hashing for stability.
             for (Path file : ColUtils.iterable(files.sorted())) {
                 if (!Files.isRegularFile(file)) continue;
 
-                HashUtils.addToHasher(hasher, file);
+                Utils.addToDigest(digest, file);
             }
-            return hasher.hash();
+            return Utils.finishHash(digest);
         } catch (IOException e) {
             LOGGER.error("Failed to hash java installation.", e);
             return null;
@@ -153,8 +146,8 @@ public class JdkInstallationManager {
         /**
          * Provision a JDK/JRE from the given request.
          *
-         * @param baseDir  The folder to place the JDK/JRE folder
-         * @param request  The provision request.
+         * @param baseDir The folder to place the JDK/JRE folder
+         * @param request The provision request.
          * @return A {@link ProvisionResult} containing the properties about the provisioned jdk.
          * @throws IOException If there was an error provisioning the JDK.
          */
@@ -263,15 +256,14 @@ public class JdkInstallationManager {
         public Architecture architecture;
 
         @Nullable
-        @JsonAdapter (HashCodeAdapter.class)
-        public HashCode hash;
+        public String hash;
 
         public String path = "";
 
         public Installation() {
         }
 
-        public Installation(String version, boolean isJdk, Architecture architecture, @Nullable HashCode hash, String path) {
+        public Installation(String version, boolean isJdk, Architecture architecture, @Nullable String hash, String path) {
             this();
             this.version = version;
             this.isJdk = isJdk;
