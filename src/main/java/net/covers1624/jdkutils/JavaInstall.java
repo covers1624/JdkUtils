@@ -126,12 +126,17 @@ public class JavaInstall {
         if (DEBUG) {
             LOGGER.info("Attempting to parse install from executable '{}'", executable);
         }
-        if (Files.notExists(executable)) return null;
+        if (Files.notExists(executable)) {
+            if (DEBUG) {
+                LOGGER.error(" Executable does not exist!");
+            }
+            return null;
+        }
         try {
             Path tempDir = Files.createTempDirectory("java_prop_extract");
             JavaPropExtractGenerator.writeClass(tempDir);
             List<String> args = new LinkedList<>(Arrays.asList(
-                    executable.normalize().toAbsolutePath().toString(),
+                    executable.toRealPath().toString(),
                     "-Dfile.encoding=UTF8",
                     "-cp",
                     ".",

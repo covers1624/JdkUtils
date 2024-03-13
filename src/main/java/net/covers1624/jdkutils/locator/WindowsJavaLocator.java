@@ -103,10 +103,7 @@ public class WindowsJavaLocator extends JavaLocator {
                 Path javaHome = getPathValue(registry, WindowsRegistry.Key.HKEY_LOCAL_MACHINE, join(subkey, keySuffix), pathKey);
                 if (javaHome == null) continue;
 
-                javaHome = javaHome.toRealPath(); // Ensure we nuke symlinks/junctions.
-
-                Path javaExecutable = getJavaExecutable(JavaInstall.getHomeDirectory(javaHome));
-                addJavaInstall(installs, JavaInstall.parse(javaExecutable));
+                addJavaInstall(installs, JavaInstall.parse(getJavaExecutable(javaHome)));
             }
         }
     }

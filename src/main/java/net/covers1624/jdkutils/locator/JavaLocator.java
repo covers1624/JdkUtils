@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -56,18 +57,14 @@ public abstract class JavaLocator {
     // Internal used by JavaLocator implementations.
     protected void findJavasInFolder(List<JavaInstall> installs, Path folder) throws IOException {
         if (Files.notExists(folder)) return;
-        try (Stream<Path> files = Files.list(folder)) {
-            for (Path path : FastStream.of(files)) {
-                if (!Files.isDirectory(path)) continue;
-                path = path.toRealPath(); // Ensure we nuke symlinks.
-                Path javaExecutable = getJavaExecutable(JavaInstall.getHomeDirectory(path));
-                addJavaInstall(installs, JavaInstall.parse(javaExecutable));
-            }
+        for (Path path : listDir(folder)) {
+            if (!Files.isDirectory(path)) continue;
+            addJavaInstall(installs, JavaInstall.parse(getJavaExecutable(path)));
         }
     }
 
-    protected Path getJavaExecutable(Path javaHome) {
-        return JavaInstall.getJavaExecutable(javaHome, useJavaw);
+    protected Path getJavaExecutable(Path path) {
+        return JavaInstall.getJavaExecutable(JavaInstall.getHomeDirectory(path), useJavaw);
     }
 
     protected static void addJavaInstall(List<JavaInstall> installs, @Nullable JavaInstall install) {
@@ -75,6 +72,12 @@ public abstract class JavaLocator {
         // Simple duplicate filter.
         if (!ColUtils.anyMatch(installs, e -> e.javaHome.equals(install.javaHome))) {
             installs.add(install);
+        }
+    }
+
+    protected static List<Path> listDir(Path dir) throws IOException {
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.collect(Collectors.toList());
         }
     }
 
