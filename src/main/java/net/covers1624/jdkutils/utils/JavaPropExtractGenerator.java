@@ -1,4 +1,4 @@
-package net.covers1624.jdkutils;
+package net.covers1624.jdkutils.utils;
 
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.io.IOUtils;

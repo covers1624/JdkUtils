@@ -1,6 +1,7 @@
 package net.covers1624.jdkutils;
 
 import net.covers1624.jdkutils.locator.JavaLocator;
+import net.covers1624.jdkutils.utils.JavaPropExtractGenerator;
 import net.covers1624.quack.io.IOUtils;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
