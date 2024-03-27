@@ -4,8 +4,8 @@ import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 import net.covers1624.jdkutils.JdkInstallationManager.ProvisionRequest;
-import net.covers1624.quack.net.DownloadAction;
-import net.covers1624.quack.net.okhttp.OkHttpDownloadAction;
+import net.covers1624.jdkutils.provisioning.adoptium.AdoptiumProvisioner;
+import net.covers1624.quack.net.httpapi.okhttp.OkHttpEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +29,7 @@ public class InstallationTest {
                 .withRequiredArg();
         OptionSpec<String> semverOpt = parser.accepts("semver", "The java semver version.")
                 .withRequiredArg();
-        OptionSpec<Void> ignoreMacosAArch64Opt = parser.accepts("ignore-mac-aarch64", "If AArch64 Mac should be treated as X64.");
+        OptionSpec<Void> forceX64MacOpt = parser.accepts("forceX64Mac", "If AArch64 Mac should be treated as X64.");
         OptionSpec<Void> preferJreOpt = parser.accepts("jre", "If a JRE is all that is required.");
         OptionSet optSet = parser.parse(args);
 
@@ -52,18 +52,14 @@ public class InstallationTest {
 
         JdkInstallationManager jdkInstallationManager = new JdkInstallationManager(
                 Paths.get("jdks"),
-                new AdoptiumProvisioner(() -> {
-                    DownloadAction action = new OkHttpDownloadAction();
-                    action.setQuiet(false);
-                    return action;
-                })
+                new AdoptiumProvisioner(OkHttpEngine.create())
         );
         assert javaVersion != null;
         ProvisionRequest.Builder builder = new ProvisionRequest.Builder()
                 .forVersion(javaVersion)
                 .preferJRE(optSet.has(preferJreOpt))
-                .ignoreMacosAArch64(optSet.has(ignoreMacosAArch64Opt))
-                .downloadListener(new StatusDownloadListener());
+                .forceX64OnMac(optSet.has(forceX64MacOpt))
+                .downloadListener(new StatusRequestListener());
         if (semver != null) {
             builder.withSemver(semver);
         }

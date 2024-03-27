@@ -3,11 +3,12 @@ package net.covers1624.jdkutils;
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
 import net.covers1624.jdkutils.locator.JavaLocator;
+import net.covers1624.jdkutils.utils.Utils;
 import net.covers1624.quack.annotation.Requires;
-import net.covers1624.quack.collection.ColUtils;
-import net.covers1624.quack.collection.StreamableIterable;
+import net.covers1624.quack.collection.FastStream;
 import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.net.download.DownloadListener;
+import net.covers1624.quack.net.httpapi.RequestListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
 import org.apache.maven.artifact.versioning.ComparableVersion;
@@ -25,6 +26,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static java.util.Objects.requireNonNull;
+import static net.covers1624.jdkutils.utils.Utils.SHA_256;
 
 /**
  * Capable of managing custom installations of Java JDK's.
@@ -71,18 +73,19 @@ public class JdkInstallationManager {
     /**
      * Find an existing JDK for the specified java Major version.
      *
-     * @param version The Java Major version to use.
-     * @param semver  An optional semver filter.
-     * @param jre     If a JRE is all that is required.
+     * @param version       The Java Major version to use.
+     * @param semver        An optional semver filter.
+     * @param jre           If a JRE is all that is required.
+     * @param forceX64OnMac If Mac should force the use of x64 vms. Assumes rosetta support.
      * @return The Found JDK home directory. Otherwise <code>null</code>.
      */
     @Nullable
-    public Path findJdk(JavaVersion version, @Nullable String semver, boolean jre, boolean ignoreMacosAArch64) {
+    public Path findJdk(JavaVersion version, @Nullable String semver, boolean jre, boolean forceX64OnMac) {
         OperatingSystem os = OperatingSystem.current();
-        LinkedList<Installation> candidates = StreamableIterable.of(installations)
+        LinkedList<Installation> candidates = FastStream.of(installations)
                 .filter(e -> version == JavaVersion.parse(e.version))
-                // On mac, if we are ignoring aarch64, filter it away, otherwise only include it.
-                .filter(e -> os != OperatingSystem.MACOS || ignoreMacosAArch64 != (e.architecture == Architecture.AARCH64))
+                // On mac, if we are forcing x64, filter it away, otherwise only include it.
+                .filter(e -> os != OperatingSystem.MACOS || forceX64OnMac == (e.architecture == Architecture.X64))
                 .filter(e -> semver == null || semver.equals(e.version)) // If we have a semver filter, do the filter.
                 .filter(e -> jre || e.isJdk) // If we require a JDK, make sure we get a JDK.
                 .toLinkedList();
@@ -102,7 +105,7 @@ public class JdkInstallationManager {
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
      */
     public Path provisionJdk(ProvisionRequest request) throws IOException {
-        Path existing = findJdk(request.version, request.semver, request.preferJre, request.ignoreMacosAArch64);
+        Path existing = findJdk(request.version, request.semver, request.jre, request.forceX64OnMac);
         if (existing != null) return existing;
 
         ProvisionResult result = provisioner.provisionJdk(baseDir, request);
@@ -125,9 +128,9 @@ public class JdkInstallationManager {
     @Nullable
     private String hashInstallation(Path installation) {
         try (Stream<Path> files = Files.walk(installation)) {
-            MessageDigest digest = Utils.getDigest("SHA256");
+            MessageDigest digest = Utils.getDigest(SHA_256);
             // Sort files before hashing for stability.
-            for (Path file : ColUtils.iterable(files.sorted())) {
+            for (Path file : FastStream.of(files).sorted()) {
                 if (!Files.isRegularFile(file)) continue;
 
                 Utils.addToDigest(digest, file);
@@ -171,14 +174,14 @@ public class JdkInstallationManager {
         /**
          * If only a JRE is required.
          */
-        public final boolean preferJre;
+        public final boolean jre;
 
         /**
          * If macOS AArch64 should be treated as x64.
          */
-        public final boolean ignoreMacosAArch64;
+        public final boolean forceX64OnMac;
 
-        public final @Nullable DownloadListener downloadListener;
+        public final @Nullable RequestListener requestListener;
 
         public ProvisionRequest(Builder builder) {
             if (builder.version == null) {
@@ -187,18 +190,18 @@ public class JdkInstallationManager {
 
             version = builder.version;
             semver = builder.semver;
-            preferJre = builder.preferJre;
-            ignoreMacosAArch64 = builder.ignoreMacosAArch64;
-            downloadListener = builder.downloadListener;
+            jre = builder.jre;
+            forceX64OnMac = builder.forceX64OnMac;
+            requestListener = builder.requestListener;
         }
 
         public static final class Builder {
 
             private @Nullable JavaVersion version;
             private @Nullable String semver;
-            private boolean preferJre;
-            private boolean ignoreMacosAArch64;
-            private @Nullable DownloadListener downloadListener;
+            private boolean jre;
+            private boolean forceX64OnMac;
+            private @Nullable RequestListener requestListener;
 
             public Builder forVersion(JavaVersion version) {
                 this.version = version;
@@ -211,18 +214,18 @@ public class JdkInstallationManager {
                 return this;
             }
 
-            public Builder preferJRE(boolean preferJre) {
-                this.preferJre = preferJre;
+            public Builder preferJRE(boolean jre) {
+                this.jre = jre;
                 return this;
             }
 
-            public Builder ignoreMacosAArch64(boolean ignoreMacosAArch64) {
-                this.ignoreMacosAArch64 = ignoreMacosAArch64;
+            public Builder forceX64OnMac(boolean forceX64OnMac) {
+                this.forceX64OnMac = forceX64OnMac;
                 return this;
             }
 
-            public Builder downloadListener(DownloadListener downloadListener) {
-                this.downloadListener = downloadListener;
+            public Builder downloadListener(RequestListener requestListener) {
+                this.requestListener = requestListener;
                 return this;
             }
 

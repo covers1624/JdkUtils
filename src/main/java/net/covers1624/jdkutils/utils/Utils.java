@@ -1,6 +1,7 @@
-package net.covers1624.jdkutils;
+package net.covers1624.jdkutils.utils;
 
 import net.covers1624.quack.io.IOUtils;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,9 +13,12 @@ import java.security.NoSuchAlgorithmException;
 /**
  * Created by covers1624 on 13/3/24.
  */
-class Utils {
+@ApiStatus.Internal
+public class Utils {
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
+
+    public static final String SHA_256 = "SHA-256";
 
     public static String hashFile(String alg, Path file) throws IOException {
         MessageDigest digest = getDigest(alg);

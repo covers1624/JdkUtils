@@ -1,33 +1,31 @@
 package net.covers1624.jdkutils;
 
-import net.covers1624.quack.net.download.DownloadListener;
+import net.covers1624.quack.net.httpapi.RequestListener;
 
 /**
  * Created by covers1624 on 9/11/21.
  */
-public class StatusDownloadListener implements DownloadListener {
+public class StatusRequestListener implements RequestListener {
 
     int lastLen = 0;
-    private long expected;
 
     @Override
-    public void connecting() {
+    public void start(Direction type) {
     }
 
     @Override
-    public void start(long expectedLen) {
-        expected = expectedLen;
+    public void onUpload(long total, long now) {
     }
 
     @Override
-    public void update(long processedBytes) {
-        String line = "Downloading... (" + getStatus(processedBytes, expected) + ")";
+    public void onDownload(long total, long now) {
+        String line = "Downloading... (" + getStatus(now, total) + ")";
         lastLen = line.length();
         System.out.print("\r" + line);
     }
 
     @Override
-    public void finish(long totalProcessed) {
+    public void end() {
         System.out.print("\r" + repeat(' ', lastLen) + "\r");
     }
 

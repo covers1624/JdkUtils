@@ -47,22 +47,18 @@ configurations {
 
 dependencies {
     api 'org.slf4j:slf4j-api:1.7.32'
-    api 'net.covers1624:Quack:0.4.10.96'
+    api 'net.covers1624:Quack:0.4.10.97'
 
     api 'com.google.code.gson:gson:2.8.9'
 
-    api 'org.apache.commons:commons-compress:1.21'
+    api 'org.apache.commons:commons-compress:1.26.1'
 
     compileOnly 'org.ow2.asm:asm:9.2'
     api('net.rubygrapefruit:native-platform:0.21') {
         transitive = false
     }
-    api('net.rubygrapefruit:native-platform-windows-amd64:0.21') {
-        transitive = false
-    }
-    api('net.rubygrapefruit:native-platform-windows-i386:0.21') {
-        transitive = false
-    }
+    api 'net.rubygrapefruit:native-platform-windows-amd64:0.21'
+    api 'net.rubygrapefruit:native-platform-windows-i386:0.21'
 
     api('org.apache.maven:maven-artifact:3.8.4') {
         transitive = false
@@ -75,6 +71,13 @@ dependencies {
     testLibs 'org.ow2.asm:asm:9.2'
     testLibs 'com.squareup.okhttp3:okhttp:4.9.3'
     testLibs 'org.slf4j:slf4j-simple:1.7.32'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 jar {
