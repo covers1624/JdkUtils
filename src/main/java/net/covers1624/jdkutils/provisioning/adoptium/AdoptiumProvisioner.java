@@ -50,7 +50,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
 
         AdoptiumRelease.Binary binary = release.binaries.get(0);
         AdoptiumRelease.Package pkg = binary.pkg;
-        LOGGER.info("Release found {}, Download {}", release.version_data.semver, pkg.link);
+        LOGGER.info("Release found {}, Download {}", release.version_data.openjdk_version, pkg.link);
 
         Path archive = baseDir.resolve(pkg.name);
         EngineRequest req = http.newRequest()
@@ -80,6 +80,6 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         Path javaHome = extractArchive(baseDir, archive);
         Files.deleteIfExists(archive);
 
-        return new JdkInstallationManager.ProvisionResult(release.version_data.semver, javaHome, "jdk".equals(binary.image_type), result.architecture);
+        return new JdkInstallationManager.ProvisionResult(release.version_data.openjdk_version, javaHome, "jdk".equals(binary.image_type), result.architecture);
     }
 }
