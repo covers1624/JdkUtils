@@ -12,6 +12,7 @@ import org.jetbrains.annotations.ApiStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.util.Objects;
 import java.util.zip.GZIPInputStream;
@@ -33,7 +34,7 @@ public class ArchiveUtils {
                     if (basePath == null) basePath = file;
                     Files.createDirectories(file);
                 } else {
-                    Files.copy(is, IOUtils.makeParents(file));
+                    Files.copy(is, IOUtils.makeParents(file), StandardCopyOption.REPLACE_EXISTING);
                 }
                 writeAttributes(file, entry);
             }
