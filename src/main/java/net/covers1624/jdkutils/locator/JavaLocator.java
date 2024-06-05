@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -76,6 +77,8 @@ public abstract class JavaLocator {
     }
 
     protected static List<Path> listDir(Path dir) throws IOException {
+        if (Files.notExists(dir)) return Collections.emptyList();
+
         try (Stream<Path> files = Files.list(dir)) {
             return files.collect(Collectors.toList());
         }
