@@ -53,6 +53,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
         LOGGER.info("Release found {}, Download {}", release.version_data.openjdk_version, pkg.link);
 
         Path archive = baseDir.resolve(pkg.name);
+        LOGGER.debug("Downloading archive to {}", archive);
         EngineRequest req = http.newRequest()
                 .method("GET", null)
                 .url(pkg.link);
@@ -71,6 +72,7 @@ public class AdoptiumProvisioner implements JdkInstallationManager.JdkProvisione
                 IOUtils.copy(rc, wc);
             }
         }
+        LOGGER.debug("File downloaded.");
 
         long size = Files.size(archive);
         if (size != pkg.size) throw new IOException("Downloaded archive size incorrect. Expected " + pkg.size + ", Got: " + size);

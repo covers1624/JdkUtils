@@ -8,6 +8,8 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.jetbrains.annotations.ApiStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,8 +25,11 @@ import java.util.zip.GZIPInputStream;
 @ApiStatus.Internal
 public class ArchiveUtils {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ArchiveUtils.class);
+
     public static Path extractArchive(Path baseDir, Path archive) throws IOException {
         Path extractionDir = baseDir.resolve(getNameWithoutExtension(archive.getFileName()));
+        LOGGER.debug("Extracting archive {} into {}", archive, extractionDir);
         Path basePath = null;
         try (ArchiveInputStream<?> is = open(archive)) {
             ArchiveEntry entry;
@@ -39,6 +44,7 @@ public class ArchiveUtils {
                 writeAttributes(file, entry);
             }
         }
+        LOGGER.debug("Extracted. Base dir {}", baseDir);
         return Objects.requireNonNull(basePath, "Base path was not set during extraction. Empty zip? Archive with no files?");
     }
 

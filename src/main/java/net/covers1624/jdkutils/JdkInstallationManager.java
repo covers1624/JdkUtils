@@ -6,8 +6,6 @@ import net.covers1624.jdkutils.locator.JavaLocator;
 import net.covers1624.jdkutils.utils.Utils;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.FastStream;
-import net.covers1624.quack.gson.JsonUtils;
-import net.covers1624.quack.net.download.DownloadListener;
 import net.covers1624.quack.net.httpapi.RequestListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
@@ -16,8 +14,11 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Writer;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -57,11 +58,21 @@ public class JdkInstallationManager {
         this.baseDir = baseDir;
         this.provisioner = provisioner;
         manifestPath = baseDir.resolve("installations.json");
+        LOGGER.debug("Starting with baseDir {} manifestPath {}", baseDir, manifestPath);
         List<Installation> installs = new ArrayList<>();
         if (Files.exists(manifestPath)) {
             try {
-                JsonElement parsed = JsonUtils.parse(GSON, manifestPath, JsonElement.class);
+                String json = new String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8);
+                if (json.contains("\uFFFD")) {
+                    LOGGER.warn("File contains UTF-8 Replacement char. Trying with ISO_8859_1");
+                    json = new String(Files.readAllBytes(manifestPath), StandardCharsets.ISO_8859_1);
+                }
+                JsonElement parsed = GSON.fromJson(json, JsonElement.class);
                 installs = GSON.fromJson(Installation.migrate(parsed), INSTALLS_TYPE);
+                LOGGER.debug("Loaded {} installs.", installs.size());
+                for (Installation install : installs) {
+                    LOGGER.debug("  {}", install);
+                }
             } catch (IOException | JsonParseException e) {
                 // TODO, we may be better off throwing an error here.
                 LOGGER.error("Failed to parse json {}. Ignoring..", manifestPath, e);
@@ -81,6 +92,7 @@ public class JdkInstallationManager {
      */
     @Nullable
     public Path findJdk(JavaVersion version, @Nullable String semver, boolean jre, boolean forceX64OnMac) {
+        LOGGER.debug("Trying to find previously installed jvm matching Version: {} Semver: {} Jre: {} ForgeX64OnMac: {}", version, semver, jre, forceX64OnMac);
         OperatingSystem os = OperatingSystem.current();
         LinkedList<Installation> candidates = FastStream.of(installations)
                 .filter(e -> version == JavaVersion.parse(e.version))
@@ -89,9 +101,18 @@ public class JdkInstallationManager {
                 .filter(e -> semver == null || semver.equals(e.version)) // If we have a semver filter, do the filter.
                 .filter(e -> jre || e.isJdk) // If we require a JDK, make sure we get a JDK.
                 .toLinkedList();
-        if (candidates.isEmpty()) return null;
+        if (candidates.isEmpty()) {
+            LOGGER.debug(" Did not find a candidate.");
+            return null;
+        }
 
+        LOGGER.debug(" Found {} candidates", candidates.size());
+        candidates.forEach(e -> LOGGER.debug("  {}", e));
         candidates.sort(Comparator.<Installation, ComparableVersion>comparing(e -> new ComparableVersion(e.version)).reversed());
+        LOGGER.info(" Sorted");
+        candidates.forEach(e -> LOGGER.debug("  {}", e));
+        Installation chosen = candidates.getFirst();
+        LOGGER.debug(" Chose {}", chosen);
         return JavaInstall.getHomeDirectory(Paths.get(candidates.getFirst().path));
     }
 
@@ -105,9 +126,14 @@ public class JdkInstallationManager {
      * @throws IOException Thrown if an error occurs whilst provisioning the JDK.
      */
     public Path provisionJdk(ProvisionRequest request) throws IOException {
+        LOGGER.debug("Provision request: {}", request);
         Path existing = findJdk(request.version, request.semver, request.jre, request.forceX64OnMac);
-        if (existing != null) return existing;
+        if (existing != null) {
+            LOGGER.debug(" Filled request with existing jvm {}", existing);
+            return existing;
+        }
 
+        LOGGER.debug("Did not find an existing jvm. Requesting a new one..");
         ProvisionResult result = provisioner.provisionJdk(baseDir, request);
 
         assert Files.exists(result.baseDir);
@@ -118,8 +144,8 @@ public class JdkInstallationManager {
     }
 
     private void saveManifest() {
-        try {
-            JsonUtils.write(GSON, manifestPath, installations, INSTALLS_TYPE);
+        try (Writer writer = Files.newBufferedWriter(manifestPath, StandardCharsets.UTF_8)) {
+            GSON.toJson(installations, INSTALLS_TYPE, writer);
         } catch (IOException e) {
             LOGGER.error("Failed to save JDKInstallation manifest!", e);
         }
@@ -233,6 +259,16 @@ public class JdkInstallationManager {
                 return new ProvisionRequest(this);
             }
         }
+
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", ProvisionRequest.class.getSimpleName() + "[", "]")
+                    .add("version=" + version)
+                    .add("semver='" + semver + "'")
+                    .add("jre=" + jre)
+                    .add("forceX64OnMac=" + forceX64OnMac)
+                    .toString();
+        }
     }
 
     public static class ProvisionResult {
@@ -288,6 +324,17 @@ public class JdkInstallationManager {
                 array.add(entryObj);
             }
             return array;
+        }
+
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", Installation.class.getSimpleName() + "[", "]")
+                    .add("version='" + version + "'")
+                    .add("isJdk=" + isJdk)
+                    .add("architecture=" + architecture)
+                    .add("hash='" + hash + "'")
+                    .add("path='" + path + "'")
+                    .toString();
         }
     }
 }
