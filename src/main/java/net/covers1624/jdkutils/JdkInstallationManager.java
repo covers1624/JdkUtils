@@ -107,8 +107,10 @@ public class JdkInstallationManager {
                 if (!Files.isDirectory(path)) continue;
 
                 // Check if we have already know about whats inside this directory.
-                Path rel = baseDir.relativize(path);
-                if (ColUtils.anyMatch(installations, e -> e.path.startsWith(rel + "/"))) continue;
+                String rel = baseDir.relativize(path).toString();
+                // e.path == rel when the installation is old-format, baseDir/<folder>/bin
+                // e.path.startsWith(rel + /) when the installation is new-format. baseDir/<zip name>/<folder>/bin
+                if (ColUtils.anyMatch(installations, e -> e.path.equals(rel) || e.path.startsWith(rel + "/"))) continue;
 
                 // We have found a directory we don't currently know about. May have been a lost installation due to
                 // the above yeeting an installation with an invalid path.
