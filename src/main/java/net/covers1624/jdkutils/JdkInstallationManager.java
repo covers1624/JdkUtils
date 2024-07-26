@@ -38,7 +38,7 @@ import static net.covers1624.jdkutils.utils.Utils.SHA_256;
 @Requires ("com.google.code.gson")
 public class JdkInstallationManager {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(JavaLocator.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(JdkInstallationManager.class);
 
     private static final Gson GSON = new Gson();
     private static final Type INSTALLS_TYPE = new TypeToken<List<Installation>>() { }.getType();
