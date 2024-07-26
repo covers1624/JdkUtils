@@ -5,7 +5,9 @@ import com.google.gson.reflect.TypeToken;
 import net.covers1624.jdkutils.locator.JavaLocator;
 import net.covers1624.jdkutils.utils.Utils;
 import net.covers1624.quack.annotation.Requires;
+import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.collection.FastStream;
+import net.covers1624.quack.gson.JsonUtils;
 import net.covers1624.quack.net.httpapi.RequestListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
@@ -14,9 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,7 +38,7 @@ import static net.covers1624.jdkutils.utils.Utils.SHA_256;
 @Requires ("com.google.code.gson")
 public class JdkInstallationManager {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(JavaLocator.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(JdkInstallationManager.class);
 
     private static final Gson GSON = new Gson();
     private static final Type INSTALLS_TYPE = new TypeToken<List<Installation>>() { }.getType();
@@ -62,12 +62,7 @@ public class JdkInstallationManager {
         List<Installation> installs = new ArrayList<>();
         if (Files.exists(manifestPath)) {
             try {
-                String json = new String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8);
-                if (json.contains("\uFFFD")) {
-                    LOGGER.warn("File contains UTF-8 Replacement char. Trying with ISO_8859_1");
-                    json = new String(Files.readAllBytes(manifestPath), StandardCharsets.ISO_8859_1);
-                }
-                JsonElement parsed = GSON.fromJson(json, JsonElement.class);
+                JsonElement parsed = JsonUtils.parse(GSON, manifestPath, JsonElement.class, StandardCharsets.UTF_8);
                 installs = GSON.fromJson(Installation.migrate(parsed), INSTALLS_TYPE);
                 LOGGER.debug("Loaded {} installs.", installs.size());
                 for (Installation install : installs) {
@@ -79,6 +74,82 @@ public class JdkInstallationManager {
             }
         }
         installations = installs;
+        validateInstallations();
+    }
+
+    private void validateInstallations() {
+        LOGGER.info("Validating java installations.");
+        for (ListIterator<Installation> iterator = installations.listIterator(); iterator.hasNext(); ) {
+            Installation installation = iterator.next();
+            LOGGER.debug("Checking install at {}", installation.path);
+            // Check all installations can be executed.
+            if (!installation.isExecutable(baseDir)) {
+                LOGGER.warn("Removing cache of un-executable installation at {}", installation.getPath(baseDir));
+                iterator.remove();
+                continue;
+            }
+
+            // If they are using absolute paths, replace with relative paths.
+            Path path = Paths.get(installation.path);
+            if (path.isAbsolute()) {
+                LOGGER.info("Converting installation '{}' to relative paths.", installation.path);
+                installation.path = baseDir.relativize(path).toString();
+            }
+            // TODO validate hashes?
+        }
+        saveManifest();
+
+        try (Stream<Path> stream = Files.list(baseDir)) {
+            // Iterate all files inside the base directory.
+            // There is usually just the manifest in here, then a series of directories for each extracted java installation.
+            for (Path path : FastStream.of(stream)) {
+                // We only care about directories.
+                if (!Files.isDirectory(path)) continue;
+
+                // Check if we have already know about whats inside this directory.
+                String rel = baseDir.relativize(path).toString();
+                // e.path == rel when the installation is old-format, baseDir/<folder>/bin
+                // e.path.startsWith(rel + /) when the installation is new-format. baseDir/<zip name>/<folder>/bin
+                if (ColUtils.anyMatch(installations, e -> e.path.equals(rel) || e.path.startsWith(rel + "/"))) continue;
+
+                // We have found a directory we don't currently know about. May have been a lost installation due to
+                // the above yeeting an installation with an invalid path.
+                Installation newInstall = tryFindInstallation(path);
+                if (newInstall != null) {
+                    LOGGER.info("Recovered installation in {}", path);
+                    installations.add(newInstall);
+                }
+            }
+        } catch (IOException ex) {
+            LOGGER.warn("Failed to scan installations dir.", ex);
+        }
+        saveManifest();
+    }
+
+    private @Nullable Installation tryFindInstallation(Path searchDir) {
+        JavaInstall install = JavaInstall.parse(JavaInstall.getJavaExecutable(JavaInstall.getHomeDirectory(searchDir), true));
+        if (install != null) {
+            return new Installation(
+                    install.runtimeVersion,
+                    install.hasCompiler,
+                    install.architecture,
+                    hashInstallation(searchDir),
+                    baseDir.relativize(searchDir).toString()
+            );
+        }
+
+        List<Path> folders;
+        try (Stream<Path> files = Files.list(searchDir)) {
+            folders = FastStream.of(files)
+                    .filter(Files::isDirectory)
+                    .toList();
+        } catch (IOException ex) {
+            LOGGER.warn("Failed to iterate directory.", ex);
+            return null;
+        }
+
+        if (folders.size() != 1) return null;
+        return tryFindInstallation(folders.get(0));
     }
 
     /**
@@ -109,11 +180,11 @@ public class JdkInstallationManager {
         LOGGER.debug(" Found {} candidates", candidates.size());
         candidates.forEach(e -> LOGGER.debug("  {}", e));
         candidates.sort(Comparator.<Installation, ComparableVersion>comparing(e -> new ComparableVersion(e.version)).reversed());
-        LOGGER.info(" Sorted");
+        LOGGER.debug(" Sorted");
         candidates.forEach(e -> LOGGER.debug("  {}", e));
         Installation chosen = candidates.getFirst();
         LOGGER.debug(" Chose {}", chosen);
-        return JavaInstall.getHomeDirectory(Paths.get(candidates.getFirst().path));
+        return JavaInstall.getHomeDirectory(candidates.getFirst().getPath(baseDir));
     }
 
     /**
@@ -138,14 +209,20 @@ public class JdkInstallationManager {
 
         assert Files.exists(result.baseDir);
 
-        installations.add(new Installation(result.semver, result.isJdk, result.architecture, hashInstallation(result.baseDir), result.baseDir.toAbsolutePath().toString()));
+        installations.add(new Installation(
+                result.semver,
+                result.isJdk,
+                result.architecture,
+                hashInstallation(result.baseDir),
+                baseDir.relativize(result.baseDir).toString() // Store path as relative.
+        ));
         saveManifest();
         return JavaInstall.getHomeDirectory(result.baseDir);
     }
 
     private void saveManifest() {
-        try (Writer writer = Files.newBufferedWriter(manifestPath, StandardCharsets.UTF_8)) {
-            GSON.toJson(installations, INSTALLS_TYPE, writer);
+        try {
+            JsonUtils.write(GSON, manifestPath, installations, INSTALLS_TYPE, StandardCharsets.UTF_8);
         } catch (IOException e) {
             LOGGER.error("Failed to save JDKInstallation manifest!", e);
         }
@@ -288,23 +365,13 @@ public class JdkInstallationManager {
 
     public static class Installation {
 
-        public String version = "";
-
-        public boolean isJdk = false;
-
-        @Nullable
-        public Architecture architecture;
-
-        @Nullable
-        public String hash;
-
-        public String path = "";
-
-        public Installation() {
-        }
+        public String version;
+        public boolean isJdk;
+        public @Nullable Architecture architecture;
+        public @Nullable String hash;
+        public String path;
 
         public Installation(String version, boolean isJdk, Architecture architecture, @Nullable String hash, String path) {
-            this();
             this.version = version;
             this.isJdk = isJdk;
             this.architecture = architecture;
@@ -324,6 +391,19 @@ public class JdkInstallationManager {
                 array.add(entryObj);
             }
             return array;
+        }
+
+        public boolean isExecutable(Path baseDir) {
+            Path executable = JavaInstall.getJavaExecutable(JavaInstall.getHomeDirectory(getPath(baseDir)), true);
+            return JavaInstall.parse(executable) != null;
+        }
+
+        public Path getPath(Path baseDir) {
+            Path path = Paths.get(this.path);
+            if (path.isAbsolute()) {
+                return path;
+            }
+            return baseDir.resolve(path);
         }
 
         @Override
