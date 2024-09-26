@@ -63,10 +63,12 @@ public class JdkInstallationManager {
         if (Files.exists(manifestPath)) {
             try {
                 JsonElement parsed = JsonUtils.parse(GSON, manifestPath, JsonElement.class, StandardCharsets.UTF_8);
-                installs = GSON.fromJson(Installation.migrate(parsed), INSTALLS_TYPE);
-                LOGGER.debug("Loaded {} installs.", installs.size());
-                for (Installation install : installs) {
-                    LOGGER.debug("  {}", install);
+                if (parsed != null) {
+                    installs = GSON.fromJson(Installation.migrate(parsed), INSTALLS_TYPE);
+                    LOGGER.debug("Loaded {} installs.", installs.size());
+                    for (Installation install : installs) {
+                        LOGGER.debug("  {}", install);
+                    }
                 }
             } catch (IOException | JsonParseException e) {
                 // TODO, we may be better off throwing an error here.
