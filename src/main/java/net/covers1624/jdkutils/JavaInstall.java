@@ -2,23 +2,16 @@ package net.covers1624.jdkutils;
 
 import net.covers1624.jdkutils.locator.JavaLocator;
 import net.covers1624.jdkutils.utils.JavaPropExtractGenerator;
-import net.covers1624.quack.io.IOUtils;
+import net.covers1624.jdkutils.utils.JavaPropExtractor;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.Arrays;
+import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
@@ -43,9 +36,6 @@ import static java.util.Objects.requireNonNull;
  * Created by covers1624 on 30/10/21.
  */
 public class JavaInstall {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(JavaInstall.class);
-    private static final boolean DEBUG = Boolean.getBoolean("net.covers1624.jdkutils.JavaInstall.debug");
 
     public final JavaVersion langVersion;
     public final Path javaHome;
@@ -122,79 +112,32 @@ public class JavaInstall {
         return homeDir.resolve("bin").resolve(OperatingSystem.current().exeSuffix(executable));
     }
 
-    @Nullable
-    public static JavaInstall parse(Path executable) {
-        if (DEBUG) {
-            LOGGER.info("Attempting to parse install from executable '{}'", executable);
+    /**
+     * Execute the given Java executable, extracting information from it.
+     *
+     * @param executable The executable to run.
+     * @return The extracted {@link JavaInstall} information.
+     */
+    public static @Nullable JavaInstall parse(Path executable) {
+        Map<String, String> properties = JavaPropExtractor.extractProperties(executable, Arrays.asList(JavaPropExtractGenerator.DEFAULTS));
+        if (properties == null) return null;
+
+        Path javaHome = Paths.get(requireNonNull(properties.get("java.home"), "Missing 'java.home' property for vm: " + executable)).toAbsolutePath();
+
+        // If we are in a 'jre' folder and the parent has a 'bin' folder, then the parent is our java home directory.
+        if (javaHome.getFileName().toString().equals("jre") && Files.exists(javaHome.getParent().resolve("bin"))) {
+            javaHome = javaHome.getParent();
         }
-        if (Files.notExists(executable)) {
-            if (DEBUG) {
-                LOGGER.error(" Executable does not exist!");
-            }
-            return null;
-        }
-        try {
-            Path tempDir = Files.createTempDirectory("java_prop_extract");
-            JavaPropExtractGenerator.writeClass(tempDir);
-            List<String> args = new LinkedList<>(Arrays.asList(
-                    executable.toRealPath().toString(),
-                    "-Dfile.encoding=UTF8",
-                    "-cp",
-                    ".",
-                    "PropExtract"
-            ));
-            Collections.addAll(args, JavaPropExtractGenerator.DEFAULTS);
-            ProcessBuilder builder = new ProcessBuilder()
-                    .directory(tempDir.toFile())
-                    .command(args);
 
-            ByteArrayOutputStream os = new ByteArrayOutputStream();
-            Process process = builder.start();
-            IOUtils.copy(process.getInputStream(), os);
-            try {
-                boolean exited = process.waitFor(30, TimeUnit.SECONDS);
-                if (!exited) {
-                    LOGGER.warn("Waited more than 30 seconds for {}. Force closing..", executable);
-                    process.destroyForcibly();
-                    return null;
-                }
-            } catch (InterruptedException e) {
-                throw new RuntimeException("Interrupted.", e);
-            }
-
-            Map<String, String> properties = new HashMap<>();
-            ByteArrayInputStream is = new ByteArrayInputStream(os.toByteArray());
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] split = line.split("=", 2);
-                    if (split.length != 2) continue;
-                    properties.put(split[0], split[1]);
-                }
-            }
-
-            Path javaHome = Paths.get(requireNonNull(properties.get("java.home"), "Missing 'java.home' property for vm: " + executable)).toAbsolutePath();
-
-            // If we are in a 'jre' folder and the parent has a 'bin' folder, then the parent is our java home directory.
-            if (javaHome.getFileName().toString().equals("jre") && Files.exists(javaHome.getParent().resolve("bin"))) {
-                javaHome = javaHome.getParent();
-            }
-
-            return new JavaInstall(
-                    javaHome,
-                    requireNonNull(properties.get("java.vendor"), "Missing 'java.vendor' property for vm: " + executable),
-                    requireNonNull(properties.get("java.vm.name"), "Missing 'java.name' property for vm: " + executable),
-                    requireNonNull(properties.get("java.version"), "Missing 'java.version' property for vm: " + executable),
-                    requireNonNull(properties.get("java.runtime.name"), "Missing 'java.runtime.name' property for vm: " + executable),
-                    requireNonNull(properties.get("java.runtime.version"), "Missing 'java.runtime.version' property for vm: " + executable),
-                    Architecture.parse(requireNonNull(properties.get("os.arch"), "Missing 'os.arch' property for vm: " + executable))
-            );
-        } catch (Throwable e) {
-            if (DEBUG) {
-                LOGGER.error("Failed to parse Java install.", e);
-            }
-            return null;
-        }
+        return new JavaInstall(
+                javaHome,
+                requireNonNull(properties.get("java.vendor"), "Missing 'java.vendor' property for vm: " + executable),
+                requireNonNull(properties.get("java.vm.name"), "Missing 'java.name' property for vm: " + executable),
+                requireNonNull(properties.get("java.version"), "Missing 'java.version' property for vm: " + executable),
+                requireNonNull(properties.get("java.runtime.name"), "Missing 'java.runtime.name' property for vm: " + executable),
+                requireNonNull(properties.get("java.runtime.version"), "Missing 'java.runtime.version' property for vm: " + executable),
+                Architecture.parse(requireNonNull(properties.get("os.arch"), "Missing 'os.arch' property for vm: " + executable))
+        );
     }
 
     @Override
