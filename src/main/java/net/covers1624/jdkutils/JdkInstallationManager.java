@@ -2,12 +2,12 @@ package net.covers1624.jdkutils;
 
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
-import net.covers1624.jdkutils.locator.JavaLocator;
 import net.covers1624.jdkutils.utils.Utils;
 import net.covers1624.quack.annotation.Requires;
 import net.covers1624.quack.collection.ColUtils;
 import net.covers1624.quack.collection.FastStream;
 import net.covers1624.quack.gson.JsonUtils;
+import net.covers1624.quack.io.IOUtils;
 import net.covers1624.quack.net.httpapi.RequestListener;
 import net.covers1624.quack.platform.Architecture;
 import net.covers1624.quack.platform.OperatingSystem;
@@ -76,7 +76,9 @@ public class JdkInstallationManager {
             }
         }
         installations = installs;
+        saveManifest();
         validateInstallations();
+        validateInstallationsDir();
     }
 
     private void validateInstallations() {
@@ -100,6 +102,10 @@ public class JdkInstallationManager {
             // TODO validate hashes?
         }
         saveManifest();
+    }
+
+    private void validateInstallationsDir() {
+        if (Files.notExists(baseDir)) return;
 
         try (Stream<Path> stream = Files.list(baseDir)) {
             // Iterate all files inside the base directory.
@@ -224,7 +230,7 @@ public class JdkInstallationManager {
 
     private void saveManifest() {
         try {
-            JsonUtils.write(GSON, manifestPath, installations, INSTALLS_TYPE, StandardCharsets.UTF_8);
+            JsonUtils.write(GSON, IOUtils.makeParents(manifestPath), installations, INSTALLS_TYPE, StandardCharsets.UTF_8);
         } catch (IOException e) {
             LOGGER.error("Failed to save JDKInstallation manifest!", e);
         }
