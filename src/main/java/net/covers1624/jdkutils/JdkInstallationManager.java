@@ -171,13 +171,13 @@ public class JdkInstallationManager {
      */
     @Nullable
     public Path findJdk(JavaVersion version, @Nullable String semver, boolean jre, boolean forceX64OnMac) {
-        LOGGER.debug("Trying to find previously installed jvm matching Version: {} Semver: {} Jre: {} ForgeX64OnMac: {}", version, semver, jre, forceX64OnMac);
+        LOGGER.debug("Trying to find previously installed jvm matching Version: {} Semver: {} Jre: {} ForceX64OnMac: {}", version, semver, jre, forceX64OnMac);
         OperatingSystem os = OperatingSystem.current();
         LinkedList<Installation> candidates = FastStream.of(installations)
                 .filter(e -> version == JavaVersion.parse(e.version))
                 // On mac, if we are forcing x64, filter it away, otherwise only include it.
                 .filter(e -> os != OperatingSystem.MACOS || forceX64OnMac == (e.architecture == Architecture.X64))
-                .filter(e -> semver == null || semver.equals(e.version)) // If we have a semver filter, do the filter.
+                .filter(e -> semver == null || e.version.startsWith(semver)) // If we have a semver filter, do the filter.
                 .filter(e -> jre || e.isJdk) // If we require a JDK, make sure we get a JDK.
                 .toLinkedList();
         if (candidates.isEmpty()) {
