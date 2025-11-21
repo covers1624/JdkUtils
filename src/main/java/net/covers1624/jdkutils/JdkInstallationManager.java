@@ -79,6 +79,7 @@ public class JdkInstallationManager {
         saveManifest();
         validateInstallations();
         validateInstallationsDir();
+        deduplicateInstallations();
     }
 
     private void validateInstallations() {
@@ -131,6 +132,18 @@ public class JdkInstallationManager {
         } catch (IOException ex) {
             LOGGER.warn("Failed to scan installations dir.", ex);
         }
+        saveManifest();
+    }
+
+    private void deduplicateInstallations() {
+        LOGGER.info("Removing duplicate installation entries.");
+        Set<String> seen = new HashSet<>();
+        installations.removeIf(e -> {
+            if (seen.add(e.path)) return false;
+
+            LOGGER.info("  Removing duplicate installation entry for {}.", e.path);
+            return true;
+        });
         saveManifest();
     }
 
